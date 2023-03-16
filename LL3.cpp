@@ -1,6 +1,7 @@
 #define LL3_CPP
 #include <omp.h>
 #include "LL3.hpp"
+#include "magnons.hpp"
 
 #ifdef CCC
 const char *mode = "CCC";
@@ -130,10 +131,13 @@ void Model::calc(int steps){
 		}
 		//-------------
 		// делаем магнон
+		/*
 		Vecf<3> km(random()%nm_max, random()%nm_max, random()%nm_max); km *= 2*M_PI/(1<<data_rank);
 		float phi0 = rand_alpha*random()*2*M_PI;
 		Vecf<3> nm = sph_cell(rand()%sph_cells_num(5), 5), nm_perp = perp(nm);
-		
+		*/
+		MagnonsStochSrcV2 mg(data_rank, mg_split, dt*T*alpha);
+
 		// unsigned int seed = 0;		
 		// #pragma omp parallel for firstprivate(seed) if(parallel)
 #pragma omp parallel for if(parallel)
@@ -149,10 +153,11 @@ void Model::calc(int steps){
 				// m0 = gauss_rotate(m0/m0.abs(), sghT, seed); // old variant, errro
 				m0 /= m0.abs(); // data[2][i].m[k] = m0;
 
-				Vecf<3> Hm = rotate(nm_perp, nm, sin(phi0+km*coord[k]+km*zoff2pos<3>(i, data_rank)));
+				// Vecf<3> Hm = rotate(nm_perp, nm, sin(phi0+km*coord[k]+km*zoff2pos<3>(i, data_rank)));
 				
 				// m0 = rotate(m0, rand_gaussV<3, float>(seed)*sghT);
-				m0 = rotate(m0, Hm*sghT);
+				// m0 = rotate(m0, Hm*sghT);
+				m0 = rotate(m0, mg(zoff2pos<3>(i, data_rank)+coord[k]));
 			}
 		}
 		//---------------
