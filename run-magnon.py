@@ -18,16 +18,16 @@ model.f_use = False
 model.data_rank = 6
 model.J = 1.
 model.dt = 1e-2
-#model.T = 1.
+model.T = 1.
 model.K = 0.
 model.gamma = 1.
 model.alpha = 0.1
 model.Hext = vecf(0., 0., calc.Hz)
 model.nK = vecf(0., 0., 1.)
 model.M0 = vecf(0., 0., 1.)
-model.mg_split = 1
-model.T = .0015*2**model.mg_split
-#model.A = 0.
+#model.mg_split = 1
+#model.T = .0015*2**model.mg_split
+model.zeta = 0.
 
 Tc = 1.5 if cvar.mode=='CCC' else 2.2 if cvar.mode=='VCC' else 3.3
 if Tc-.8<=model.T and model.T<=Tc+1.4: calc.t_eq *= 2

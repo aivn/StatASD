@@ -136,13 +136,13 @@ void Model::calc(int steps){
 		float phi0 = rand_alpha*random()*2*M_PI;
 		Vecf<3> nm = sph_cell(rand()%sph_cells_num(5), 5), nm_perp = perp(nm);
 		*/
-		MagnonsStochSrcV2 mg(data_rank, mg_split, dt*T*alpha);
+		MagnonsStochSrcV0 mg(data_rank,mg_split, dt*T*alpha);
 
-		// unsigned int seed = 0;		
-		// #pragma omp parallel for firstprivate(seed) if(parallel)
-#pragma omp parallel for if(parallel)
+		unsigned int seed = 0;		
+#pragma omp parallel for firstprivate(seed) if(parallel)
+		//#pragma omp parallel for if(parallel)
 		for(size_t i=0; i<sz; ++i){
-			// rand_init(seed, omp_get_thread_num());
+			rand_init(seed, omp_get_thread_num());
 			ZCubeNb<3> nb = data[0].get_nb(i, 7);
 			for(int k=0; k<cell_sz; k++){
 				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &dm = data[3][i].m[k];
@@ -157,7 +157,7 @@ void Model::calc(int steps){
 				
 				// m0 = rotate(m0, rand_gaussV<3, float>(seed)*sghT);
 				// m0 = rotate(m0, Hm*sghT);
-				m0 = rotate(m0, mg(zoff2pos<3>(i, data_rank)+coord[k]));
+				m0 = rotate(m0, mg(zoff2pos<3>(i, data_rank)+coord[k])*zeta+(1-zeta)*rand_gaussV<3, float>(seed)*sghT);
 			}
 		}
 		//---------------

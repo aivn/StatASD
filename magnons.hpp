@@ -67,4 +67,18 @@ public:
 	}
 };
 //------------------------------------------------------------------------------
+class MagnonsStochSrcV0{
+	Vecf<3> k, n, n_perp; float phi0, A;   
+public:
+	MagnonsStochSrcV0(int data_rank, int, float hTalpha){
+		for(int i=0; i<3; i++) if(rand()%2) k[i] = 2*M_PI/(1<<data_rank);
+		A = sqrt(2*hTalpha)*rand_gauss();
+		sph_init_table(5);
+		n = sph_cell(rand()%sph_cells_num(5), 5);
+		n_perp = perp(n);
+		phi0 = rand()*rand_alpha*2*M_PI;
+	}
+	Vecf<3> operator ()(Vecf<3> r) const { return  rotate(n_perp, n, sin(phi0+k*r))*A; }
+};
+//------------------------------------------------------------------------------
 #endif //MAGNONS_HPP
