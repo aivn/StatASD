@@ -78,7 +78,7 @@ public:
 		n_perp = perp(n);
 		phi0 = rand()*rand_alpha*2*M_PI;
 	}
-	Vecf<3> operator ()(Vecf<3> r) const { return  rotate(n_perp, n, sin(phi0+k*r))*A; }
+	Vecf<3> operator ()(Vecf<3> r) const { return  rotate(n_perp, n, phi0+k*r)*A; }
 };
 //------------------------------------------------------------------------------
 #endif //MAGNONS_HPP
