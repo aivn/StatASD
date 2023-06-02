@@ -25,7 +25,7 @@ model.alpha = 0.1
 model.Hext = vecf(0., 0., calc.Hz)
 model.nK = vecf(0., 0., 1.)
 model.M0 = vecf(0., 0., 1.)
-#model.mg_split = 1
+model.mg_split = 1
 #model.T = .0015*2**model.mg_split
 model.zeta = 0.
 
