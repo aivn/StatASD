@@ -59,11 +59,12 @@ MagnonsStochField::MagnonsStochField(int data_rank, Ind<3> mg_sz, float A_){
 	n = sph_cell(rand()%sph_cells_num(5), 5);
 	n_perp = perp(n);
 	phi0 = rand()*rand_alpha*2*M_PI;
-	
+	/*	
 	magnons.init(mg_sz, Vecf<3>(), vecf(1<<data_rank));
 	magnons.periodic = 7;
 	magnons.interp = 0x333;
 	for(auto &mg: magnons) mg = 4*sph_cell(rand()%sph_cells_num(5), 5);
+	*/
 }
 //------------------------------------------------------------------------------
 const int n_b = 8;
@@ -78,7 +79,12 @@ const float hbar = .5f;
 void MagnonsStochFieldGen::init(int data_rank_, float T, float cL, float halpha_){
 	data_rank = data_rank_; halpha = halpha_;
 	int L = 1<<data_rank; float _N = 1./(2*L*L*L);
-	for(Ind<3> pos: irange<3>(L)){
+	// for(Ind<3> pos: irange<3>(L)){
+	// for(Ind<3> pos: irange<3>(-L/2-1, L/2+2)){ // MG14
+	for(Ind<3> pos0: irange<3>(-L, L+1)){ // MG15
+		Ind<3> pos(abs(pos0[0]), abs(pos0[1]), abs(pos0[2]));
+		// if(pos.abs()<.1*L) continue; // MG15
+		// if(pos.abs()>.61*L) continue; // MG16
 		if(!pos[0] && !pos[1] && !pos[2]) continue;
 		Vecf<3> k = 2*M_PI/L*pos;
 		bool k_ok = true; float sigma = 0;
@@ -87,19 +93,31 @@ void MagnonsStochFieldGen::init(int data_rank_, float T, float cL, float halpha_
 			sigma += 1-cosf(dphi);
 		}
 		if(!k_ok) continue;
-		float ek = hbar*sigma, fk = 24.f/(cL*(expf(ek/T)-1));
+		// float ek = hbar*sigma, fk = 24.f/(cL*(expf(ek/T)-1));
+		// float ek = hbar*(.5+sigma), fk = 24.f/(cL*(expf(ek/T)-1)); // MG13
+		// float ek = hbar*(sigma), fk = 1./(expf(ek/T)-1); // MG14
+		// float ek = hbar*(sigma), fk = 1./(expf(ek/T)-1); // MG15
+		// float ek = hbar*(sigma), fk = .25/(expf(ek/T)-1); // MG17
+		float ek = hbar*(sigma), fk = 1./(expf((.25+ek)/T)-1); // MG18
 		node_t node; node.k = pos; 
 		// node.A = sqrtf(hbar*fk*_N);
-		node.A = 8*sqrtf(fk*ek*_N)/M_PI;  // MG0
+		node.A = 8*sqrtf(fk*ek*_N)/M_PI;  // MG0, MG6 (см. хидер), MG13, MG14, MG15
 		// node.A = 8*sqrtf(fk*hbar*_N)/M_PI;   // MG1
 		// node.A = 8*sqrtf(fk*ek*sigma*_N)/M_PI;   // MG2
 		// MG3 и далее основаны на неравных вероятностях k
 		// node.P = sigma; node.A = 8*sqrtf(fk*ek*_N)/M_PI;  // MG3
 		// node.P = sigma; node.A = 8*sqrtf(fk*hbar*_N)/M_PI;  // MG4
 		// node.P = sqrt(sigma); node.A = 8*sqrtf(fk*ek*_N)/M_PI;  // MG5
+		// float ssig = sqrt(sigma); node.A = 8*sqrtf(fk*ek*_N/ssig)/M_PI;  // MG7
+		// float ssig = pow(sigma, 1./3); node.A = 8*sqrtf(fk*ek*_N/ssig)/M_PI;  // MG8
+		// float ssig = pow(sigma, .25); node.A = 8*sqrtf(fk*ek*_N/ssig)/M_PI;  // MG9
+		// float ssig = pow(sigma, .5); node.A = 8*sqrtf(fk*ek*_N*ssig)/M_PI;  // MG10
+		// float ssig = pow(sigma, .25); node.A = 8*sqrtf(fk*ek*_N*ssig)/M_PI;  // MG11
+		// float ssig = pow(sigma, .125); node.A = 8*sqrtf(fk*ek*_N*ssig)/M_PI;  // MG12
 		
 		table.push_back(node);
 	}
+	WMSG(table.size());
 	float sqrtNk = sqrtf(table.size());
 	Pmax = 0; for(auto &n: table){ Pmax += n.P; n.P = Pmax; n.A *= sqrtNk; }
 }

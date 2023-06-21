@@ -20,7 +20,8 @@ extern const char *mode;
 // альтернативный вариант расчета корреляций реализован через префиксы Q в calc_av2(), ведется относительно атома i как положено в лоб 
 
 #ifdef CCC
-const int cell_sz = 1, nb_sz = 6, corr2_types = 2, corr2_sz[2] = {3,12};  // число атомов в ячейке, число соседей, число типов Q и что то странное?
+// const int cell_sz = 1, nb_sz = 6, corr2_types = 2, corr2_sz[2] = {3,12};  // число атомов в ячейке, число соседей, число типов Q и что то странное?
+const int cell_sz = 1, nb_sz = 6;  // число атомов в ячейке, число соседей
 const Link nb_pos[1][6] = {{ Link(-1,0,0, 0), Link(1,0,0, 0), Link(0,-1,0, 0), Link(0,1,0, 0), Link(0,0,-1, 0), Link(0,0,1, 0) }};
 const Vecf<3> coord[1] = {vecf(0.f, 0.f, 0.f)};
 
@@ -35,14 +36,15 @@ const Link QW[1][6+6*4+6] = {{  // для каждого соседа связи
 	}};
 const Vecf<4> Q_weights = vecf(4.f, 1.f, 0.f, 0.f);
 
-#   ifdef LL3_CPP
-const Ind<2> corr2_0[3] = {ind(0,1), ind(2,3), ind(4,5)};
-const Ind<2> corr2_1[12] = {ind(0,2), ind(0,3), ind(0,4), ind(0,5), ind(1,2), ind(1,3), ind(1,4), ind(1,5), ind(2,4), ind(2,5), ind(3,4), ind(3,5)};
-const Ind<2> *corr2_table[2] = {corr2_0, corr2_1};
-#   endif
+// #   ifdef LL3_CPP
+// const Ind<2> corr2_0[3] = {ind(0,1), ind(2,3), ind(4,5)};
+// const Ind<2> corr2_1[12] = {ind(0,2), ind(0,3), ind(0,4), ind(0,5), ind(1,2), ind(1,3), ind(1,4), ind(1,5), ind(2,4), ind(2,5), ind(3,4), ind(3,5)};
+// const Ind<2> *corr2_table[2] = {corr2_0, corr2_1};
+// #   endif
 #endif
 #ifdef VCC
-const int cell_sz = 2, nb_sz = 8, corr2_types = 3, corr2_sz[3] = {4,12,12};
+// const int cell_sz = 2, nb_sz = 8, corr2_types = 3, corr2_sz[3] = {4,12,12};
+const int cell_sz = 2, nb_sz = 8; 
 const Link nb_pos[2][8] = {{ Link(0,0,0, 1), Link(-1,0,0, 1), Link(0,-1,0, 1), Link(0,0,-1, 1),
 							 Link(0,-1,-1, 1), Link(-1,0,-1, 1), Link(-1,-1,0, 1), Link(-1,-1,-1, 1) },
 						   { Link(0,0,0, 0), Link(1,0,0, 0), Link(0,1,0, 0), Link(0,0,1, 0),
@@ -70,16 +72,17 @@ const Link QW[2][8+3*8+3*8+8] = {{  // generate by make-VCC.py
 		Link(1, 1, 1, 0), Link(0, -1, -1, 1), Link(-1, 0, -1, 1), Link(-1, -1, 0, 1), Link(-1, 0, 0, 1), Link(0, -1, 0, 1), Link(0, 0, -1, 1), Link(0, 0, 0, 1)
 	}};
 const Vecf<4> Q_weights = vecf(3.f, 3.f, 1.f, 0.f);
-#   ifdef LL3_CPP
-// autogenerage by make-VCC.py
-const Ind<2> corr2_0[4] = {ind(0,7), ind(1,4), ind(2,5), ind(3,6)};
-const Ind<2> corr2_1[12] = {ind(0,4), ind(0,5), ind(0,6), ind(1,2), ind(1,3), ind(1,7), ind(2,3), ind(2,7), ind(3,7), ind(4,5), ind(4,6), ind(5,6)};
-const Ind<2> corr2_2[12] = {ind(0,1), ind(0,2), ind(0,3), ind(1,5), ind(1,6), ind(2,4), ind(2,6), ind(3,4), ind(3,5), ind(4,7), ind(5,7), ind(6,7)};
-const Ind<2> *corr2_table[6] = {corr2_0, corr2_0, corr2_1, corr2_1, corr2_2, corr2_2};
-#   endif
+// #   ifdef LL3_CPP
+// // autogenerage by make-VCC.py
+// const Ind<2> corr2_0[4] = {ind(0,7), ind(1,4), ind(2,5), ind(3,6)};
+// const Ind<2> corr2_1[12] = {ind(0,4), ind(0,5), ind(0,6), ind(1,2), ind(1,3), ind(1,7), ind(2,3), ind(2,7), ind(3,7), ind(4,5), ind(4,6), ind(5,6)};
+// const Ind<2> corr2_2[12] = {ind(0,1), ind(0,2), ind(0,3), ind(1,5), ind(1,6), ind(2,4), ind(2,6), ind(3,4), ind(3,5), ind(4,7), ind(5,7), ind(6,7)};
+// const Ind<2> *corr2_table[6] = {corr2_0, corr2_0, corr2_1, corr2_1, corr2_2, corr2_2};
+// #   endif
 #endif
 #ifdef FCC
-const int cell_sz = 4, nb_sz = 12, corr2_types = 3, corr2_sz[3] = {6, 24, 12};
+// const int cell_sz = 4, nb_sz = 12, corr2_types = 3, corr2_sz[3] = {6, 24, 12};
+const int cell_sz = 4, nb_sz = 12; 
 // autogenerage by make-FCC.py
 const Link nb_pos[4][12] = { { Link(-1,-1,0, 3), Link(-1,0,-1, 2), Link(-1,0,0, 2), Link(-1,0,0, 3), Link(0,-1,-1, 1), Link(0,-1,0, 1),
 							   Link(0,-1,0, 3), Link(0,0,-1, 1), Link(0,0,-1, 2), Link(0,0,0, 1), Link(0,0,0, 2), Link(0,0,0, 3) },
@@ -148,6 +151,7 @@ const Link QW[4][12+4*12+2*12+4*12+12] = {{
 	}};
 
 const Vecf<4> Q_weights = vecf(4.f, 2.f, 4.f, 1.f);
+/*
 #   ifdef LL3_CPP
 const Ind<2> corr2_00[6] = { ind(0,11), ind(1,10), ind(2,8), ind(3,6), ind(4,9), ind(5,7) }; // 6
 const Ind<2> corr2_01[6] = { ind(0,10), ind(1,8), ind(2,6), ind(3,5), ind(4,11), ind(7,9) }; // 6
@@ -168,6 +172,7 @@ const Ind<2> *corr2_table[12] = { corr2_00, corr2_01, corr2_02, corr2_03,
 								  corr2_10, corr2_11, corr2_12, corr2_13,
 								  corr2_20, corr2_21, corr2_22, corr2_23 };
 #   endif
+*/
 #endif
 //------------------------------------------------------------------------------
 struct Cell{
@@ -176,6 +181,7 @@ struct Cell{
 };
 //------------------------------------------------------------------------------
 class Model{
+	RandN01<float> randN01;
 	File ftm, ftvals; // эволюция одного магнитного момента и tvals
 	ZCube<Cell, 3> data[4];
 
@@ -213,9 +219,12 @@ public:
 	aiw::Vec<4> W, Weq; // W, Wexch, Wext, Wanis
 	aiw::Vec<3> M, M2, Meq, M2eq;	
 	double Mabs_eq = 0.;
-	aiw::Vec<3> corr2, corr2eq; aiw::Vec<4> Q, Qeq;
+	// aiw::Vec<3> corr2, corr2eq;
+	aiw::Vec<4> Q, Qeq;
 	aiw::Vec<4> eta, eta_eq;  // <eta^n>
-	double HextMMM, HextMMMeq, UpsHextM, UpsHextMeq, Psi, Psi_eq, Ts, S, Seq;
+	aiw::Vec<3> PHI, PHIeq, THETA, THETAeq, MMM, MMMeq;
+	aiw::Vec<6> XI, XIeq;  // Sigma xx, yy, zz, xy, xz, yz
+	double Psi, Psi_eq;  // , Ts, S, Seq;
 	void clean_av_eq();
 	
 	bool f_use = true;

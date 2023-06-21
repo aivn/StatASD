@@ -69,8 +69,9 @@ public:
 	MagnonsStochField(int data_rank, Ind<3> mg_sz, float A_);
 	
 	Vecf<3> operator ()(Vecf<3> r) const {
-		Vecf<3> mg = magnons(r);
-		return  rotate(rotate(n_perp, n, phi0+k*r)*A, mg);
+		// Vecf<3> mg = magnons(r);
+		// return  rotate(rotate(n_perp, n, phi0+k*r)*A, mg);
+		return  rotate(n_perp, n, phi0+k*r)*A; // MG6
 	}
 };
 //------------------------------------------------------------------------------

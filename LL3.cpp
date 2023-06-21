@@ -17,8 +17,10 @@ const char *mode = "FCC";
 const double _3 = 1./3, _6 = 1./6;
 //------------------------------------------------------------------------------
 void Model::init(const char *path_){
-	path = path_; // M0 /= M0.abs();
-
+	randN01.init(omp_get_max_threads());
+	path = path_; // M0 /= M0.abs();  
+	double S, Ts;
+ 
 	sph_init_table(ind(5, f_rank).max());
 	if(f_use){ f.init(f_rank, 0, 1); f_eq.init(f_rank, 0, 1); f_eq.fill(0.f); }
 
@@ -44,19 +46,21 @@ void Model::init(const char *path_){
 			}
 		calc_av2(); S = 0;
 	} else {
-		M0 /= M0.abs();
+		M0 /= M0.abs(); M = M0;
 		for(size_t i=0; i<data[0].size(); i++) data[0][i].init(M0);
-		S = 0; Ts = 0;  W[1] = -nb_sz*J/2; W[2] = -M0*Hext; W[3] = -K*(nK*M0)*(nK*M0);
+		S = 0; Ts = 0;  W[1] = -nb_sz*J/2; W[2] = -M0*Hext; W[3] = -K*(nK*M0)*(nK*M0); W[0] = W[1]+W[2]+W[3];
 	}
 	t = 0.;
 	ftm = File("%tm0.dat", "w", path_); ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 	ftvals = File("%tvals.dat", "w", path_);
-	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis c20 c21 c22  Q1 Q2 Q3 Q4 eta eta2 eta3 eta4  UpsHextM HextMMM  Psi Ts S\n");
+	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz  MMMx MMMy MMMz  Psi Upsilon zeta\n");
 
 	// M = M2 = vec(0., 0., 1.);
 	// W[1] = -nb_sz/2*J; W[2] = -Hext[2]; W[3] = -K*nK[2]*nK[2]; W[0] = W[1]+W[2]+W[3];
 	// WOUT(data_rank, cell_sz, nb_sz, mode);
-	ftvals("% %   %       %       %      %      %     %     %     %  % % %\n", t, M.abs(), M, M2, W, corr2, Q, eta, UpsHextM, HextMMM, Psi, Ts, S).flush();
+	// ftvals("% %   %       %       %      %      %     %     %     %  % % %\n", t, M.abs(), M, M2, W, corr2, Q, eta, UpsHextM, HextMMM, Psi, Ts, S).flush();
+	ftvals("% %   %       %       %      %      %     %      %      %     %   %  % %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, MMM, Psi, LLBE::Upsilon(M.abs(), eta[0]), LLBE::eta2zeta(M.abs(), eta[0])).flush();
 
 	if(calc_cl) chain_lambda.resize(1<<(data_rank-1));
 
@@ -107,9 +111,11 @@ void Model::calc_av(){  // считаем средние значения W, M, 
 */
 //------------------------------------------------------------------------------
 void Model::calc_av2(){  // считаем средние значения W, M, M2
-	size_t sz = data[0].size(); double oldW = W[0], oldTs = Ts;
-	double Mx = 0, My = 0, Mz = 0, M2x = 0, M2y = 0, M2z = 0, Wx = 0, We = 0, Wa = 0,  Q20 = 0, Q21 = 0, Q22 = 0, Q23 = 0, eta1 = 0, eta2 = 0, eta3 = 0, eta4 = 0, HMMM = 0, psi = 0; 
-#pragma omp parallel for reduction(+:Mx,My,Mz,M2x,M2y,M2z,Wx,We,Wa,Q20,Q21,Q22,Q23,eta1,eta2,eta3,eta4,HMMM,psi) if(parallel)
+	size_t sz = data[0].size(); // double oldW = W[0], oldTs = Ts;
+	double Mx = 0, My = 0, Mz = 0, M2x = 0, M2y = 0, M2z = 0, Wx = 0, We = 0, Wa = 0,  Q20 = 0, Q21 = 0, Q22 = 0, Q23 = 0, eta1 = 0, eta2 = 0, eta3 = 0, eta4 = 0,
+		MMMx = 0, MMMy = 0, MMMz = 0, phi_x = 0, phi_y = 0, phi_z = 0, th_x = 0, th_y = 0, th_z = 0,
+		xi_xx = 0, xi_yy = 0, xi_zz = 0, xi_xy = 0, xi_xz = 0, xi_yz = 0, psi = 0; 
+#pragma omp parallel for reduction(+:Mx,My,Mz,M2x,M2y,M2z,Wx,We,Wa,Q20,Q21,Q22,Q23,eta1,eta2,eta3,eta4,MMMx,MMMy,MMMz,phi_x,phi_y,phi_z,th_x,th_y,th_z,xi_xx,xi_yy,xi_zz,xi_xy,xi_xz,xi_yz,psi) if(parallel)
 	for(size_t i=0; i<sz; ++i){
 		ZCubeNb<3> nb = data[0].get_nb(i, 7);
 		for(int k=0; k<cell_sz; k++){
@@ -119,13 +125,24 @@ void Model::calc_av2(){  // считаем средние значения W, M,
 			Wx -= Hexch(0, i, nb, k)*m0*.5f;
 			We -= Hext*m0;
 			float nKm = nK*m0; Wa -= K*nKm*nKm;
+			Vecf<3> MnK = m0%nK, phi = MnK*nKm, th = m0%MnK*nKm;
+			phi_x += phi[0]; phi_y += phi[1]; phi_z += phi[2];
+			th_x  +=  th[0];  th_y +=  th[1];  th_z +=  th[2];
 
+			xi_xx += m0[0]*m0[0]-1;  
+			xi_yy += m0[1]*m0[1]-1;  
+			xi_zz += m0[2]*m0[2]-1;  
+			xi_xy += m0[0]*m0[1]; 
+			xi_xz += m0[0]*m0[2]; 
+			xi_yz += m0[1]*m0[2]; 
+			
 			Vecf<Qk_types> Q2; int il = 0; // номер связи в QW
 			for(int cj=0; cj<nb_sz; cj++){
 				const Link &lij = QW[k][il++]; size_t j = i+nb[lij.off];
 				ZCubeNb<3> nbj = data[0].get_nb(j, 7);  const Vecf<3> &mj = data[0][j].m[lij.cell];
 				float e = m0*mj; eta1 += e;  eta2 += e*e;  eta3 += e*e*e;  eta4 += e*e*e*e;
-				HMMM -= m0*(mj%(mj%(Hext)))*.5;  psi += m0*(mj%(mj%nK))*(mj*nK);
+				Vecf<3> mmm = mj%(mj%m0); MMMx += mmm[0]; MMMy += mmm[1]; MMMz += mmm[2];
+				psi += m0*(mj%(mj%nK))*(mj*nK);
 				for(int iQtype=0; iQtype<Qk_types; iQtype++){
 					for(int iQk=0; iQk<Qk_sz[iQtype]; iQk++){
 						const Link &ljk = QW[k][il++];
@@ -143,26 +160,28 @@ void Model::calc_av2(){  // считаем средние значения W, M,
 	M  = vec(Mx, My, Mz)/(sz*cell_sz);
 	M2 = vec(M2x, M2y, M2z)/(sz*cell_sz);
 	W  = vec(Wx+We+Wa, Wx, We, Wa)/(sz*cell_sz);
-	// Q[0] = Q20/(sz*cell_sz*corr2_sz[0]);
-	// Q[1] = Q21/(sz*cell_sz*corr2_sz[1]);
-	// if(corr2_types>=3) Q[2] = Q22/(sz*cell_sz*corr2_sz[2]);
+
+	PHI = vec(phi_x, phi_y, phi_z)/(sz*cell_sz);
+	THETA = vec(th_x, th_y, th_z)/(sz*cell_sz);
+	XI = vec(xi_xx, xi_yy, xi_zz, xi_xy, xi_xz, xi_yz)/(sz*cell_sz);
+	
+	eta = vecf(eta1, eta2, eta3, eta4)/(sz*cell_sz*nb_sz);
+	MMM = vec(MMMx, MMMy, MMMz)/(sz*cell_sz*nb_sz);  
+	Psi = psi/(sz*cell_sz*nb_sz);
+
 	Q[0] = Q20/(sz*cell_sz*nb_sz*Qk_sz[0]);
 	Q[1] = Q21/(sz*cell_sz*nb_sz*Qk_sz[1]);
 	if(Qk_types>=3) Q[2] = Q22/(sz*cell_sz*nb_sz*Qk_sz[2]);
 	if(Qk_types>3) Q[3] = Q23/(sz*cell_sz*nb_sz*Qk_sz[3]);
-	eta = vecf(eta1, eta2, eta3, eta4)/(sz*cell_sz*nb_sz);
-	HextMMM = HMMM/(sz*cell_sz*nb_sz);  
-	Psi = psi/(sz*cell_sz*nb_sz);
-	Ts = (HextMMM -  K*Psi - (eta[1]-1+Q*Q_weights)/2)/eta[0];
-	if(Ts+oldTs) S += 2*(W[0]-oldW)/(Ts+oldTs)*(Ts-oldTs);
-	UpsHextM = Hext*M*LLBE::Upsilon(M.abs(), eta[0]);
+	// Ts = (HextMMM -  K*Psi - (eta[1]-1+Q*Q_weights)/2)/eta[0];
+	// if(Ts+oldTs) S += 2*(W[0]-oldW)/(Ts+oldTs)*(Ts-oldTs);
+	// UpsHextM = Hext*M*LLBE::Upsilon(M.abs(), eta[0]);
 }
 //------------------------------------------------------------------------------
 void Model::calc(int steps){
 #ifndef MAGNONS
 	float sghT = sqrt(2*dt*alpha*T); // 2*sqrt(dt*alpha*T);
 #endif // MAGNONS
-	
 	size_t sz = data[0].size();
 	for(int Nt=0; Nt<steps; Nt++){
 #pragma omp parallel for if(parallel)
@@ -206,10 +225,7 @@ void Model::calc(int steps){
 			}
 		}
 		//-------------
-#ifndef MAGNONS
-		unsigned int seed = 0;		
-#pragma omp parallel for firstprivate(seed) if(parallel)
-#else // MAGNONS
+#ifdef MAGNONS // MAGNONS
 		// делаем магнон
 		/*
 		Vecf<3> km(random()%nm_max, random()%nm_max, random()%nm_max); km *= 2*M_PI/(1<<data_rank);
@@ -218,13 +234,10 @@ void Model::calc(int steps){
 		*/
 		// MagnonsStochSrcV3 mg(data_rank, mg_split, dt*T*alpha);
 		MagnonsStochField mg = MG();
-
+#endif // MAGNONS
 #pragma omp parallel for if(parallel)
-#endif // MAGNONS
 		for(size_t i=0; i<sz; ++i){
-#ifndef MAGNONS
-			rand_init(seed, omp_get_thread_num());
-#endif // MAGNONS
+			int thID = omp_get_thread_num();
 			ZCubeNb<3> nb = data[0].get_nb(i, 7);
 			for(int k=0; k<cell_sz; k++){
 				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &dm = data[3][i].m[k];
@@ -238,7 +251,7 @@ void Model::calc(int steps){
 				// Vecf<3> Hm = rotate(nm_perp, nm, sin(phi0+km*coord[k]+km*zoff2pos<3>(i, data_rank)));
 				
 #ifndef MAGNONS
-				m0 = rotate(m0, rand_gaussV<3, float>(seed)*sghT);
+				m0 = rotate(m0, randN01.V<3>(thID)*sghT);
 #else  // MAGNONS
 				// m0 = rotate(m0, Hm*sghT);
 				// m0 = rotate(m0, mg(zoff2pos<3>(i, data_rank)+coord[k])*zeta+(1-zeta)*rand_gaussV<3, float>(seed)*sghT);
@@ -266,13 +279,15 @@ void Model::calc(int steps){
 		t += dt; ftm("% % %\n", t, data[0][0].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 		if(calc_eq || Nt==steps-1) calc_av2();
 		if(calc_eq){
-			Meq += M; Mabs_eq += M.abs(); M2eq += M2; Weq += W; corr2eq += corr2; Qeq += Q; eta_eq += eta;
-			UpsHextMeq += UpsHextM; HextMMMeq += HextMMM;  Seq += S;  Psi_eq += Psi;
+			Meq += M; Mabs_eq += M.abs(); M2eq += M2; Weq += W; Qeq += Q; eta_eq += eta;
+			// UpsHextMeq += UpsHextM; HextMMMeq += HextMMM;  Seq += S;
+			PHIeq += PHI; THETAeq += THETA; XIeq += XI; MMMeq += MMM; Psi_eq += Psi;
 			eq_count++;
 		}
 		if(calc_eq && calc_cl) calc_chain_lambda();
 	}
-	ftvals("% %   %       %       %      %      %     %     %     %  % % %\n", t, M.abs(), M, M2, W, corr2, Q, eta, UpsHextM, HextMMM, Psi, Ts, S).flush();
+	ftvals("% %   %       %       %      %      %     %      %      %     %   %  % %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, MMM, Psi, LLBE::Upsilon(M.abs(), eta[0]), LLBE::eta2zeta(M.abs(), eta[0])).flush();
 }
 //------------------------------------------------------------------------------
 void Model::calc_chain_lambda(){
@@ -295,8 +310,9 @@ void Model::calc_chain_lambda(){
 }
 //------------------------------------------------------------------------------
 void Model::clean_av_eq(){
-	eq_count = 0; Meq = vec(0.); Mabs_eq = 0.; M2eq = vec(0.); Weq = vec(0.); corr2eq = vec(0.); Qeq = vec(0.); eta_eq = vec(0.);
-	UpsHextMeq = 0; Psi_eq = 0;  Seq = 0;  HextMMMeq = 0;
+	eq_count = 0; Meq = vec(0.); Mabs_eq = 0.; M2eq = vec(0.); Weq = vec(0.); Qeq = vec(0.); eta_eq = vec(0.);
+	PHIeq = vec(0.); THETAeq = vec(0.); XIeq = vec(0.); MMMeq = vec(0.); Psi_eq = 0;
+	// UpsHextMeq = 0; Seq = 0;  HextMMMeq = 0;
 }
 void Model::calc_f(){
 	if(!f_use) return;
@@ -317,13 +333,14 @@ void Model::finish(){
 		Meq /= eq_count;
 		M2eq /= eq_count;
 		Mabs_eq /= eq_count;
-		corr2eq /= eq_count;
 		Qeq /= eq_count;
 		eta_eq /= eq_count;
-		UpsHextMeq /= eq_count;
-		HextMMMeq /= eq_count;
+		PHIeq /= eq_count;
+		THETAeq /= eq_count;
+		XIeq /= eq_count;
+		MMMeq /= eq_count;
 		Psi_eq /= eq_count;
-		Seq /= eq_count;
+		// Seq /= eq_count;
 		if(f_use) for(int i=0; i<int(f_eq.size()); i++) f_eq[i] /= eq_f_count;
 		if(calc_cl){
 			File fcl("%cl.dat", "w", path.c_str()); fcl.printf("#:n eta1 eta2 eta3 eta4\n");
@@ -335,12 +352,13 @@ void Model::finish(){
 		M2eq = M2;
 		Mabs_eq = M.abs();
 		if(f_use) f_eq = f.copy();
-		corr2eq = corr2;
 		Qeq = Q;
 		eta_eq = eta;
-		UpsHextMeq = UpsHextM;
-		HextMMMeq = HextMMM;
-		Seq = S;
+		PHIeq = PHI;
+		THETAeq = THETA;
+		MMMeq = MMM;
+		XIeq = XI;
+		// Seq = S;
 		Psi_eq = Psi;
 	}
 	if(f_use) f_eq.dump(File("%f_eq.sph", "w", path.c_str()));
