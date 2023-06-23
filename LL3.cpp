@@ -53,14 +53,14 @@ void Model::init(const char *path_){
 	t = 0.;
 	ftm = File("%tm0.dat", "w", path_); ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 	ftvals = File("%tvals.dat", "w", path_);
-	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz  MMMx MMMy MMMz  Psi Upsilon zeta\n");
+	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz  MMMx MMMy MMMz  Psi Upsilon UpsilonM zeta\n");
 
 	// M = M2 = vec(0., 0., 1.);
 	// W[1] = -nb_sz/2*J; W[2] = -Hext[2]; W[3] = -K*nK[2]*nK[2]; W[0] = W[1]+W[2]+W[3];
 	// WOUT(data_rank, cell_sz, nb_sz, mode);
 	// ftvals("% %   %       %       %      %      %     %     %     %  % % %\n", t, M.abs(), M, M2, W, corr2, Q, eta, UpsHextM, HextMMM, Psi, Ts, S).flush();
-	ftvals("% %   %       %       %      %      %     %      %      %     %   %  % %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, MMM, Psi, LLBE::Upsilon(M.abs(), eta[0]), LLBE::eta2zeta(M.abs(), eta[0])).flush();
+	ftvals("% %   %       %       %      %      %     %      %      %     %   %  % % %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, MMM, Psi, LLBE::Upsilon(M.abs(), eta[0]),  UpsilonM.abs(), LLBE::eta2zeta(M.abs(), eta[0])).flush();
 
 	if(calc_cl) chain_lambda.resize(1<<(data_rank-1));
 
@@ -114,8 +114,8 @@ void Model::calc_av2(){  // считаем средние значения W, M,
 	size_t sz = data[0].size(); // double oldW = W[0], oldTs = Ts;
 	double Mx = 0, My = 0, Mz = 0, M2x = 0, M2y = 0, M2z = 0, Wx = 0, We = 0, Wa = 0,  Q20 = 0, Q21 = 0, Q22 = 0, Q23 = 0, eta1 = 0, eta2 = 0, eta3 = 0, eta4 = 0,
 		MMMx = 0, MMMy = 0, MMMz = 0, phi_x = 0, phi_y = 0, phi_z = 0, th_x = 0, th_y = 0, th_z = 0,
-		xi_xx = 0, xi_yy = 0, xi_zz = 0, xi_xy = 0, xi_xz = 0, xi_yz = 0, psi = 0; 
-#pragma omp parallel for reduction(+:Mx,My,Mz,M2x,M2y,M2z,Wx,We,Wa,Q20,Q21,Q22,Q23,eta1,eta2,eta3,eta4,MMMx,MMMy,MMMz,phi_x,phi_y,phi_z,th_x,th_y,th_z,xi_xx,xi_yy,xi_zz,xi_xy,xi_xz,xi_yz,psi) if(parallel)
+		xi_xx = 0, xi_yy = 0, xi_zz = 0, xi_xy = 0, xi_xz = 0, xi_yz = 0, psi = 0, UMx = 0, UMy = 0, UMz = 0;
+#pragma omp parallel for reduction(+:Mx,My,Mz,M2x,M2y,M2z,Wx,We,Wa,Q20,Q21,Q22,Q23,eta1,eta2,eta3,eta4,MMMx,MMMy,MMMz,phi_x,phi_y,phi_z,th_x,th_y,th_z,xi_xx,xi_yy,xi_zz,xi_xy,xi_xz,xi_yz,psi,UMx,UMy,UMz) if(parallel)
 	for(size_t i=0; i<sz; ++i){
 		ZCubeNb<3> nb = data[0].get_nb(i, 7);
 		for(int k=0; k<cell_sz; k++){
@@ -150,6 +150,7 @@ void Model::calc_av2(){  // считаем средние значения W, M,
 						Q2[iQtype] += m0*(mj%(mj%mk));
 					}
 				}
+				Vecf<3> UM = m0%(m0%mj); UMx += UM[0]; UMy += UM[1]; UMz += UM[2];
 			}
 			Q20 += Q2[0]; Q21 += Q2[1];
 			if(Qk_types>=3) Q22 += Q2[2]; 
@@ -168,6 +169,7 @@ void Model::calc_av2(){  // считаем средние значения W, M,
 	eta = vecf(eta1, eta2, eta3, eta4)/(sz*cell_sz*nb_sz);
 	MMM = vec(MMMx, MMMy, MMMz)/(sz*cell_sz*nb_sz);  
 	Psi = psi/(sz*cell_sz*nb_sz);
+	UpsilonM = -vec(UMx, UMy, UMz)/(2*sz*cell_sz*nb_sz); 
 
 	Q[0] = Q20/(sz*cell_sz*nb_sz*Qk_sz[0]);
 	Q[1] = Q21/(sz*cell_sz*nb_sz*Qk_sz[1]);
@@ -281,13 +283,13 @@ void Model::calc(int steps){
 		if(calc_eq){
 			Meq += M; Mabs_eq += M.abs(); M2eq += M2; Weq += W; Qeq += Q; eta_eq += eta;
 			// UpsHextMeq += UpsHextM; HextMMMeq += HextMMM;  Seq += S;
-			PHIeq += PHI; THETAeq += THETA; XIeq += XI; MMMeq += MMM; Psi_eq += Psi;
+			PHIeq += PHI; THETAeq += THETA; XIeq += XI; MMMeq += MMM; Psi_eq += Psi; UpsilonMeq += UpsilonM;
 			eq_count++;
 		}
 		if(calc_eq && calc_cl) calc_chain_lambda();
 	}
-	ftvals("% %   %       %       %      %      %     %      %      %     %   %  % %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, MMM, Psi, LLBE::Upsilon(M.abs(), eta[0]), LLBE::eta2zeta(M.abs(), eta[0])).flush();
+	ftvals("% %   %       %       %      %      %     %      %      %     %   %  % % %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, MMM, Psi, LLBE::Upsilon(M.abs(), eta[0]), UpsilonM.abs(), LLBE::eta2zeta(M.abs(), eta[0])).flush();
 }
 //------------------------------------------------------------------------------
 void Model::calc_chain_lambda(){
@@ -311,7 +313,7 @@ void Model::calc_chain_lambda(){
 //------------------------------------------------------------------------------
 void Model::clean_av_eq(){
 	eq_count = 0; Meq = vec(0.); Mabs_eq = 0.; M2eq = vec(0.); Weq = vec(0.); Qeq = vec(0.); eta_eq = vec(0.);
-	PHIeq = vec(0.); THETAeq = vec(0.); XIeq = vec(0.); MMMeq = vec(0.); Psi_eq = 0;
+	PHIeq = vec(0.); THETAeq = vec(0.); XIeq = vec(0.); MMMeq = vec(0.); Psi_eq = 0; UpsilonMeq = Vec<3>();
 	// UpsHextMeq = 0; Seq = 0;  HextMMMeq = 0;
 }
 void Model::calc_f(){
@@ -340,6 +342,7 @@ void Model::finish(){
 		XIeq /= eq_count;
 		MMMeq /= eq_count;
 		Psi_eq /= eq_count;
+		UpsilonMeq /= eq_count;
 		// Seq /= eq_count;
 		if(f_use) for(int i=0; i<int(f_eq.size()); i++) f_eq[i] /= eq_f_count;
 		if(calc_cl){
@@ -360,6 +363,7 @@ void Model::finish(){
 		XIeq = XI;
 		// Seq = S;
 		Psi_eq = Psi;
+		UpsilonMeq = UpsilonM;
 	}
 	if(f_use) f_eq.dump(File("%f_eq.sph", "w", path.c_str()));
 }

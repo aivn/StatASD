@@ -222,7 +222,7 @@ public:
 	// aiw::Vec<3> corr2, corr2eq;
 	aiw::Vec<4> Q, Qeq;
 	aiw::Vec<4> eta, eta_eq;  // <eta^n>
-	aiw::Vec<3> PHI, PHIeq, THETA, THETAeq, MMM, MMMeq;
+	aiw::Vec<3> PHI, PHIeq, THETA, THETAeq, MMM, MMMeq, UpsilonM, UpsilonMeq;
 	aiw::Vec<6> XI, XIeq;  // Sigma xx, yy, zz, xy, xz, yz
 	double Psi, Psi_eq;  // , Ts, S, Seq;
 	void clean_av_eq();
