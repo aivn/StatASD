@@ -4,9 +4,14 @@
 #include <aiwlib/zcube>
 #include <aiwlib/gauss>
 #include <aiwlib/sphere>
-using namespace aiw;
+using namespace aiw;  // ???
 
+#ifdef MAGNONS
 #include "magnons.hpp"
+static const bool magnons = true;
+#else  // MAGNONS
+static const bool magnons = false;
+#endif //MAGNONS
 
 // inline double lang2(double p){ return fabs(p>1e-6)? 1/tanh(p)-1/p: p/3; }
 //------------------------------------------------------------------------------
@@ -16,164 +21,53 @@ struct Link{
 };
 //------------------------------------------------------------------------------
 extern const char *mode;
-// corr это корреляции между крайними атомами в трехчастичной ф.р., при этом расчет ведется относительно атома j
-// альтернативный вариант расчета корреляций реализован через префиксы Q в calc_av2(), ведется относительно атома i как положено в лоб 
 
-#ifdef CCC
-// const int cell_sz = 1, nb_sz = 6, corr2_types = 2, corr2_sz[2] = {3,12};  // число атомов в ячейке, число соседей, число типов Q и что то странное?
-const int cell_sz = 1, nb_sz = 6;  // число атомов в ячейке, число соседей
-const Link nb_pos[1][6] = {{ Link(-1,0,0, 0), Link(1,0,0, 0), Link(0,-1,0, 0), Link(0,1,0, 0), Link(0,0,-1, 0), Link(0,0,1, 0) }};
-const Vecf<3> coord[1] = {vecf(0.f, 0.f, 0.f)};
-
-const int Qk_sz[2] = {4, 1}, Qk_types = 2;  // число видов k для каждого типа Q
-const Link QW[1][6+6*4+6] = {{  // для каждого соседа связи относительно соседа по типам Q
-		Link(-1,0,0,0),  Link(0,-1,0,0), Link(0,1,0,0), Link(0,0,-1,0), Link(0,0,1,0),  Link(-1,0,0,0),   
-		Link( 1,0,0,0),  Link(0,-1,0,0), Link(0,1,0,0), Link(0,0,-1,0), Link(0,0,1,0),  Link( 1,0,0,0),  
-		Link(0,-1,0,0),  Link(-1,0,0,0), Link(1,0,0,0), Link(0,0,-1,0), Link(0,0,1,0),  Link(0,-1,0,0),  
-		Link(0, 1,0,0),  Link(-1,0,0,0), Link(1,0,0,0), Link(0,0,-1,0), Link(0,0,1,0),  Link(0, 1,0,0),
-		Link(0,0,-1,0),  Link(-1,0,0,0), Link(1,0,0,0), Link(0,-1,0,0), Link(0,1,0,0),  Link(0,0,-1,0),
-		Link(0,0, 1,0),  Link(-1,0,0,0), Link(1,0,0,0), Link(0,-1,0,0), Link(0,1,0,0),  Link(0,0, 1,0)
-	}};
-const Vecf<4> Q_weights = vecf(4.f, 1.f, 0.f, 0.f);
-
-// #   ifdef LL3_CPP
-// const Ind<2> corr2_0[3] = {ind(0,1), ind(2,3), ind(4,5)};
-// const Ind<2> corr2_1[12] = {ind(0,2), ind(0,3), ind(0,4), ind(0,5), ind(1,2), ind(1,3), ind(1,4), ind(1,5), ind(2,4), ind(2,5), ind(3,4), ind(3,5)};
-// const Ind<2> *corr2_table[2] = {corr2_0, corr2_1};
-// #   endif
-#endif
-#ifdef VCC
-// const int cell_sz = 2, nb_sz = 8, corr2_types = 3, corr2_sz[3] = {4,12,12};
-const int cell_sz = 2, nb_sz = 8; 
-const Link nb_pos[2][8] = {{ Link(0,0,0, 1), Link(-1,0,0, 1), Link(0,-1,0, 1), Link(0,0,-1, 1),
-							 Link(0,-1,-1, 1), Link(-1,0,-1, 1), Link(-1,-1,0, 1), Link(-1,-1,-1, 1) },
-						   { Link(0,0,0, 0), Link(1,0,0, 0), Link(0,1,0, 0), Link(0,0,1, 0),
-							 Link(0,1,1, 0), Link(1,0,1, 0), Link(1,1,0, 0), Link(1,1,1, 0) }};
-const Vecf<3> coord[2] = {vecf(0.f, 0.f, 0.f), vecf(0.5f, 0.5f, 0.5f)};
-
-const int Qk_sz[3] = {3, 3, 1}, Qk_types = 3;  // число видов k для каждого типа Q
-const Link QW[2][8+3*8+3*8+8] = {{  // generate by make-VCC.py
-		Link(0, 0, 0, 1), Link(1, 0, 0, 0), Link(0, 1, 0, 0), Link(0, 0, 1, 0), Link(0, 1, 1, 0), Link(1, 0, 1, 0), Link(1, 1, 0, 0), Link(1, 1, 1, 0), 
-		Link(-1, 0, 0, 1), Link(0, 0, 0, 0), Link(1, 0, 1, 0), Link(1, 1, 0, 0), Link(0, 1, 0, 0), Link(0, 0, 1, 0), Link(1, 1, 1, 0), Link(0, 1, 1, 0), 
-		Link(0, -1, 0, 1), Link(0, 0, 0, 0), Link(0, 1, 1, 0), Link(1, 1, 0, 0), Link(1, 0, 0, 0), Link(0, 0, 1, 0), Link(1, 1, 1, 0), Link(1, 0, 1, 0), 
-		Link(0, 0, -1, 1), Link(0, 0, 0, 0), Link(0, 1, 1, 0), Link(1, 0, 1, 0), Link(1, 0, 0, 0), Link(0, 1, 0, 0), Link(1, 1, 1, 0), Link(1, 1, 0, 0), 
-		Link(0, -1, -1, 1), Link(0, 1, 0, 0), Link(0, 0, 1, 0), Link(1, 1, 1, 0), Link(0, 0, 0, 0), Link(1, 0, 1, 0), Link(1, 1, 0, 0), Link(1, 0, 0, 0), 
-		Link(-1, 0, -1, 1), Link(1, 0, 0, 0), Link(0, 0, 1, 0), Link(1, 1, 1, 0), Link(0, 0, 0, 0), Link(0, 1, 1, 0), Link(1, 1, 0, 0), Link(0, 1, 0, 0), 
-		Link(-1, -1, 0, 1), Link(1, 0, 0, 0), Link(0, 1, 0, 0), Link(1, 1, 1, 0), Link(0, 0, 0, 0), Link(0, 1, 1, 0), Link(1, 0, 1, 0), Link(0, 0, 1, 0), 
-		Link(-1, -1, -1, 1), Link(0, 1, 1, 0), Link(1, 0, 1, 0), Link(1, 1, 0, 0), Link(1, 0, 0, 0), Link(0, 1, 0, 0), Link(0, 0, 1, 0), Link(0, 0, 0, 0)
-	}, {
-		Link(0, 0, 0, 0), Link(-1, 0, 0, 1), Link(0, -1, 0, 1), Link(0, 0, -1, 1), Link(0, -1, -1, 1), Link(-1, 0, -1, 1), Link(-1, -1, 0, 1), Link(-1, -1, -1, 1), 
-		Link(1, 0, 0, 0), Link(0, 0, 0, 1), Link(-1, 0, -1, 1), Link(-1, -1, 0, 1), Link(0, -1, 0, 1), Link(0, 0, -1, 1), Link(-1, -1, -1, 1), Link(0, -1, -1, 1), 
-		Link(0, 1, 0, 0), Link(0, 0, 0, 1), Link(0, -1, -1, 1), Link(-1, -1, 0, 1), Link(-1, 0, 0, 1), Link(0, 0, -1, 1), Link(-1, -1, -1, 1), Link(-1, 0, -1, 1), 
-		Link(0, 0, 1, 0), Link(0, 0, 0, 1), Link(0, -1, -1, 1), Link(-1, 0, -1, 1), Link(-1, 0, 0, 1), Link(0, -1, 0, 1), Link(-1, -1, -1, 1), Link(-1, -1, 0, 1), 
-		Link(0, 1, 1, 0), Link(0, -1, 0, 1), Link(0, 0, -1, 1), Link(-1, -1, -1, 1), Link(0, 0, 0, 1), Link(-1, 0, -1, 1), Link(-1, -1, 0, 1), Link(-1, 0, 0, 1), 
-		Link(1, 0, 1, 0), Link(-1, 0, 0, 1), Link(0, 0, -1, 1), Link(-1, -1, -1, 1), Link(0, 0, 0, 1), Link(0, -1, -1, 1), Link(-1, -1, 0, 1), Link(0, -1, 0, 1), 
-		Link(1, 1, 0, 0), Link(-1, 0, 0, 1), Link(0, -1, 0, 1), Link(-1, -1, -1, 1), Link(0, 0, 0, 1), Link(0, -1, -1, 1), Link(-1, 0, -1, 1), Link(0, 0, -1, 1), 
-		Link(1, 1, 1, 0), Link(0, -1, -1, 1), Link(-1, 0, -1, 1), Link(-1, -1, 0, 1), Link(-1, 0, 0, 1), Link(0, -1, 0, 1), Link(0, 0, -1, 1), Link(0, 0, 0, 1)
-	}};
-const Vecf<4> Q_weights = vecf(3.f, 3.f, 1.f, 0.f);
-// #   ifdef LL3_CPP
-// // autogenerage by make-VCC.py
-// const Ind<2> corr2_0[4] = {ind(0,7), ind(1,4), ind(2,5), ind(3,6)};
-// const Ind<2> corr2_1[12] = {ind(0,4), ind(0,5), ind(0,6), ind(1,2), ind(1,3), ind(1,7), ind(2,3), ind(2,7), ind(3,7), ind(4,5), ind(4,6), ind(5,6)};
-// const Ind<2> corr2_2[12] = {ind(0,1), ind(0,2), ind(0,3), ind(1,5), ind(1,6), ind(2,4), ind(2,6), ind(3,4), ind(3,5), ind(4,7), ind(5,7), ind(6,7)};
-// const Ind<2> *corr2_table[6] = {corr2_0, corr2_0, corr2_1, corr2_1, corr2_2, corr2_2};
-// #   endif
-#endif
-#ifdef FCC
-// const int cell_sz = 4, nb_sz = 12, corr2_types = 3, corr2_sz[3] = {6, 24, 12};
-const int cell_sz = 4, nb_sz = 12; 
-// autogenerage by make-FCC.py
-const Link nb_pos[4][12] = { { Link(-1,-1,0, 3), Link(-1,0,-1, 2), Link(-1,0,0, 2), Link(-1,0,0, 3), Link(0,-1,-1, 1), Link(0,-1,0, 1),
-							   Link(0,-1,0, 3), Link(0,0,-1, 1), Link(0,0,-1, 2), Link(0,0,0, 1), Link(0,0,0, 2), Link(0,0,0, 3) },
-							 { Link(-1,0,0, 2), Link(-1,0,0, 3), Link(-1,0,1, 3), Link(-1,1,0, 2), Link(0,0,0, 0), Link(0,0,0, 2),
-							   Link(0,0,0, 3), Link(0,0,1, 0), Link(0,0,1, 3), Link(0,1,0, 0), Link(0,1,0, 2), Link(0,1,1, 0) },
-							 { Link(0,-1,0, 1), Link(0,-1,0, 3), Link(0,-1,1, 3), Link(0,0,0, 0), Link(0,0,0, 1), Link(0,0,0, 3),
-							   Link(0,0,1, 0), Link(0,0,1, 3), Link(1,-1,0, 1), Link(1,0,0, 0), Link(1,0,0, 1), Link(1,0,1, 0) },
-							 { Link(0,0,-1, 1), Link(0,0,-1, 2), Link(0,0,0, 0), Link(0,0,0, 1), Link(0,0,0, 2), Link(0,1,-1, 2),
-							   Link(0,1,0, 0), Link(0,1,0, 2), Link(1,0,-1, 1), Link(1,0,0, 0), Link(1,0,0, 1), Link(1,1,0, 0) }
+#ifdef SC
+const int cell_sz = 1, nb_sz = 6, Q_sz = 2;
+const Link nb_pos[1][6] = { { Link(0, 0, -1, 0), Link(0, -1, 0, 0), Link(-1, 0, 0, 0), Link(1, 0, 0, 0), Link(0, 1, 0, 0), Link(0, 0, 1, 0) } };
+const Ind<2> Qtable[1][15] = {
+	{ ind(1, 0), ind(2, 0), ind(2, 1), ind(3, 0), ind(3, 1), ind(4, 0), ind(4, 2), ind(4, 3), ind(5, 1), ind(5, 2), ind(5, 3), ind(5, 4),
+	  ind(3, 2), ind(4, 1), ind(5, 0) }
 };
-const Vecf<3> coord[4] = {vecf(0.f, 0.f, 0.f), vecf(0.f, 0.5f, 0.5f), vecf(0.5f, 0.f, 0.5f), vecf(0.5f, 0.5f, 0.f)};
-const int Qk_sz[4] = {4, 2, 4, 1}, Qk_types = 4;  // число видов k для каждого типа Q
+const int Qtable_sz[1][2] = { { 12, 3 } };
+#endif  // SC
 
-const Link QW[4][12+4*12+2*12+4*12+12] = {{
-		Link(-1, -1, 0, 3), Link(0, 1, -1, 2), Link(0, 1, 0, 2), Link(1, 0, -1, 1), Link(1, 0, 0, 1), Link(0, 1, 0, 0), Link(1, 0, 0, 0), Link(0, 0, -1, 1), Link(0, 0, -1, 2), Link(0, 0, 0, 1), Link(0, 0, 0, 2), Link(0, 0, 0, 0), 
-		Link(-1, 0, -1, 2), Link(0, -1, 1, 3), Link(0, 0, 1, 3), Link(1, -1, 0, 1), Link(1, 0, 0, 1), Link(0, 0, 1, 0), Link(1, 0, 0, 0), Link(0, -1, 0, 1), Link(0, -1, 0, 3), Link(0, 0, 0, 1), Link(0, 0, 0, 3), Link(0, 0, 0, 0), 
-		Link(-1, 0, 0, 2), Link(0, -1, 0, 3), Link(0, 0, 0, 3), Link(1, -1, 0, 1), Link(1, 0, 0, 1), Link(0, 0, 0, 0), Link(1, 0, 1, 0), Link(0, -1, 0, 1), Link(0, -1, 1, 3), Link(0, 0, 0, 1), Link(0, 0, 1, 3), Link(0, 0, 1, 0), 
-		Link(-1, 0, 0, 3), Link(0, 0, -1, 2), Link(0, 0, 0, 2), Link(1, 0, -1, 1), Link(1, 0, 0, 1), Link(0, 0, 0, 0), Link(1, 1, 0, 0), Link(0, 0, -1, 1), Link(0, 0, 0, 1), Link(0, 1, -1, 2), Link(0, 1, 0, 2), Link(0, 1, 0, 0), 
-		Link(0, -1, -1, 1), Link(-1, 0, 1, 3), Link(-1, 1, 0, 2), Link(0, 0, 1, 3), Link(0, 1, 0, 2), Link(0, 0, 1, 0), Link(0, 1, 0, 0), Link(-1, 0, 0, 2), Link(-1, 0, 0, 3), Link(0, 0, 0, 2), Link(0, 0, 0, 3), Link(0, 0, 0, 0), 
-		Link(0, -1, 0, 1), Link(-1, 0, 0, 3), Link(-1, 1, 0, 2), Link(0, 0, 0, 3), Link(0, 1, 0, 2), Link(0, 0, 0, 0), Link(0, 1, 1, 0), Link(-1, 0, 0, 2), Link(-1, 0, 1, 3), Link(0, 0, 0, 2), Link(0, 0, 1, 3), Link(0, 0, 1, 0), 
-		Link(0, -1, 0, 3), Link(0, 0, -1, 1), Link(0, 0, 0, 1), Link(0, 1, -1, 2), Link(0, 1, 0, 2), Link(0, 0, 0, 0), Link(1, 1, 0, 0), Link(0, 0, -1, 2), Link(0, 0, 0, 2), Link(1, 0, -1, 1), Link(1, 0, 0, 1), Link(1, 0, 0, 0), 
-		Link(0, 0, -1, 1), Link(-1, 0, 0, 2), Link(-1, 0, 1, 3), Link(0, 0, 0, 2), Link(0, 0, 1, 3), Link(0, 0, 0, 0), Link(0, 1, 1, 0), Link(-1, 0, 0, 3), Link(-1, 1, 0, 2), Link(0, 0, 0, 3), Link(0, 1, 0, 2), Link(0, 1, 0, 0), 
-		Link(0, 0, -1, 2), Link(0, -1, 0, 1), Link(0, -1, 1, 3), Link(0, 0, 0, 1), Link(0, 0, 1, 3), Link(0, 0, 0, 0), Link(1, 0, 1, 0), Link(0, -1, 0, 3), Link(0, 0, 0, 3), Link(1, -1, 0, 1), Link(1, 0, 0, 1), Link(1, 0, 0, 0), 
-		Link(0, 0, 0, 1), Link(-1, 0, 0, 2), Link(-1, 0, 0, 3), Link(0, 0, 0, 2), Link(0, 0, 0, 3), Link(0, 0, 1, 0), Link(0, 1, 0, 0), Link(-1, 0, 1, 3), Link(-1, 1, 0, 2), Link(0, 0, 1, 3), Link(0, 1, 0, 2), Link(0, 1, 1, 0), 
-		Link(0, 0, 0, 2), Link(0, -1, 0, 1), Link(0, -1, 0, 3), Link(0, 0, 0, 1), Link(0, 0, 0, 3), Link(0, 0, 1, 0), Link(1, 0, 0, 0), Link(0, -1, 1, 3), Link(0, 0, 1, 3), Link(1, -1, 0, 1), Link(1, 0, 0, 1), Link(1, 0, 1, 0), 
-		Link(0, 0, 0, 3), Link(0, 0, -1, 1), Link(0, 0, -1, 2), Link(0, 0, 0, 1), Link(0, 0, 0, 2), Link(0, 1, 0, 0), Link(1, 0, 0, 0), Link(0, 1, -1, 2), Link(0, 1, 0, 2), Link(1, 0, -1, 1), Link(1, 0, 0, 1), Link(1, 1, 0, 0)
-	}, {
-		Link(-1, 0, 0, 2), Link(0, 0, 0, 3), Link(0, 0, 1, 3), Link(1, 0, 0, 0), Link(1, 0, 1, 0), Link(0, 0, 0, 1), Link(1, -1, 0, 1), Link(0, -1, 0, 3), Link(0, -1, 1, 3), Link(0, 0, 0, 0), Link(0, 0, 1, 0), Link(0, -1, 0, 1), 
-		Link(-1, 0, 0, 3), Link(0, 0, 0, 2), Link(0, 1, 0, 2), Link(1, 0, 0, 0), Link(1, 1, 0, 0), Link(0, 0, 0, 1), Link(1, 0, -1, 1), Link(0, 0, -1, 2), Link(0, 0, 0, 0), Link(0, 1, -1, 2), Link(0, 1, 0, 0), Link(0, 0, -1, 1), 
-		Link(-1, 0, 1, 3), Link(0, 0, -1, 2), Link(0, 1, -1, 2), Link(1, 0, 0, 0), Link(1, 1, 0, 0), Link(0, 0, -1, 1), Link(1, 0, 0, 1), Link(0, 0, 0, 0), Link(0, 0, 0, 2), Link(0, 1, 0, 0), Link(0, 1, 0, 2), Link(0, 0, 0, 1), 
-		Link(-1, 1, 0, 2), Link(0, -1, 0, 3), Link(0, -1, 1, 3), Link(1, 0, 0, 0), Link(1, 0, 1, 0), Link(0, -1, 0, 1), Link(1, 0, 0, 1), Link(0, 0, 0, 0), Link(0, 0, 0, 3), Link(0, 0, 1, 0), Link(0, 0, 1, 3), Link(0, 0, 0, 1), 
-		Link(0, 0, 0, 0), Link(-1, 0, 0, 2), Link(-1, 0, 0, 3), Link(0, 0, 0, 2), Link(0, 0, 0, 3), Link(0, -1, 0, 1), Link(0, 0, -1, 1), Link(-1, -1, 0, 3), Link(-1, 0, -1, 2), Link(0, -1, 0, 3), Link(0, 0, -1, 2), Link(0, -1, -1, 1), 
-		Link(0, 0, 0, 2), Link(0, 0, 0, 0), Link(0, 0, 0, 3), Link(0, 0, 1, 0), Link(0, 0, 1, 3), Link(0, -1, 0, 1), Link(1, 0, 0, 1), Link(0, -1, 0, 3), Link(0, -1, 1, 3), Link(1, 0, 0, 0), Link(1, 0, 1, 0), Link(1, -1, 0, 1), 
-		Link(0, 0, 0, 3), Link(0, 0, 0, 0), Link(0, 0, 0, 2), Link(0, 1, 0, 0), Link(0, 1, 0, 2), Link(0, 0, -1, 1), Link(1, 0, 0, 1), Link(0, 0, -1, 2), Link(0, 1, -1, 2), Link(1, 0, 0, 0), Link(1, 1, 0, 0), Link(1, 0, -1, 1), 
-		Link(0, 0, 1, 0), Link(-1, 0, -1, 2), Link(-1, 0, 0, 3), Link(0, 0, -1, 2), Link(0, 0, 0, 3), Link(0, -1, -1, 1), Link(0, 0, 0, 1), Link(-1, -1, 0, 3), Link(-1, 0, 0, 2), Link(0, -1, 0, 3), Link(0, 0, 0, 2), Link(0, -1, 0, 1), 
-		Link(0, 0, 1, 3), Link(0, 0, -1, 2), Link(0, 0, 0, 0), Link(0, 1, -1, 2), Link(0, 1, 0, 0), Link(0, 0, 0, 1), Link(1, 0, -1, 1), Link(0, 0, 0, 2), Link(0, 1, 0, 2), Link(1, 0, 0, 0), Link(1, 1, 0, 0), Link(1, 0, 0, 1), 
-		Link(0, 1, 0, 0), Link(-1, -1, 0, 3), Link(-1, 0, 0, 2), Link(0, -1, 0, 3), Link(0, 0, 0, 2), Link(0, -1, -1, 1), Link(0, 0, 0, 1), Link(-1, 0, -1, 2), Link(-1, 0, 0, 3), Link(0, 0, -1, 2), Link(0, 0, 0, 3), Link(0, 0, -1, 1), 
-		Link(0, 1, 0, 2), Link(0, -1, 0, 3), Link(0, -1, 1, 3), Link(0, 0, 0, 0), Link(0, 0, 1, 0), Link(0, 0, 0, 1), Link(1, -1, 0, 1), Link(0, 0, 0, 3), Link(0, 0, 1, 3), Link(1, 0, 0, 0), Link(1, 0, 1, 0), Link(1, 0, 0, 1), 
-		Link(0, 1, 1, 0), Link(-1, -1, 0, 3), Link(-1, 0, -1, 2), Link(0, -1, 0, 3), Link(0, 0, -1, 2), Link(0, -1, 0, 1), Link(0, 0, -1, 1), Link(-1, 0, 0, 2), Link(-1, 0, 0, 3), Link(0, 0, 0, 2), Link(0, 0, 0, 3), Link(0, 0, 0, 1)
-	}, {
-		Link(0, -1, 0, 1), Link(0, 0, 0, 3), Link(0, 0, 1, 3), Link(0, 1, 0, 0), Link(0, 1, 1, 0), Link(-1, 1, 0, 2), Link(0, 0, 0, 2), Link(-1, 0, 0, 3), Link(-1, 0, 1, 3), Link(0, 0, 0, 0), Link(0, 0, 1, 0), Link(-1, 0, 0, 2), 
-		Link(0, -1, 0, 3), Link(0, 0, 0, 1), Link(0, 1, 0, 0), Link(1, 0, 0, 1), Link(1, 1, 0, 0), Link(0, 0, 0, 2), Link(0, 1, -1, 2), Link(0, 0, -1, 1), Link(0, 0, 0, 0), Link(1, 0, -1, 1), Link(1, 0, 0, 0), Link(0, 0, -1, 2), 
-		Link(0, -1, 1, 3), Link(0, 0, -1, 1), Link(0, 1, 0, 0), Link(1, 0, -1, 1), Link(1, 1, 0, 0), Link(0, 0, -1, 2), Link(0, 1, 0, 2), Link(0, 0, 0, 0), Link(0, 0, 0, 1), Link(1, 0, 0, 0), Link(1, 0, 0, 1), Link(0, 0, 0, 2), 
-		Link(0, 0, 0, 0), Link(0, -1, 0, 1), Link(0, -1, 0, 3), Link(0, 0, 0, 1), Link(0, 0, 0, 3), Link(-1, 0, 0, 2), Link(0, 0, -1, 2), Link(-1, -1, 0, 3), Link(-1, 0, 0, 3), Link(0, -1, -1, 1), Link(0, 0, -1, 1), Link(-1, 0, -1, 2), 
-		Link(0, 0, 0, 1), Link(0, 0, 0, 0), Link(0, 0, 0, 3), Link(0, 0, 1, 0), Link(0, 0, 1, 3), Link(-1, 0, 0, 2), Link(0, 1, 0, 2), Link(-1, 0, 0, 3), Link(-1, 0, 1, 3), Link(0, 1, 0, 0), Link(0, 1, 1, 0), Link(-1, 1, 0, 2), 
-		Link(0, 0, 0, 3), Link(0, 0, 0, 0), Link(0, 0, 0, 1), Link(1, 0, 0, 0), Link(1, 0, 0, 1), Link(0, 0, -1, 2), Link(0, 1, 0, 2), Link(0, 0, -1, 1), Link(0, 1, 0, 0), Link(1, 0, -1, 1), Link(1, 1, 0, 0), Link(0, 1, -1, 2), 
-		Link(0, 0, 1, 0), Link(0, -1, -1, 1), Link(0, -1, 0, 3), Link(0, 0, -1, 1), Link(0, 0, 0, 3), Link(-1, 0, -1, 2), Link(0, 0, 0, 2), Link(-1, -1, 0, 3), Link(-1, 0, 0, 3), Link(0, -1, 0, 1), Link(0, 0, 0, 1), Link(-1, 0, 0, 2), 
-		Link(0, 0, 1, 3), Link(0, 0, -1, 1), Link(0, 0, 0, 0), Link(1, 0, -1, 1), Link(1, 0, 0, 0), Link(0, 0, 0, 2), Link(0, 1, -1, 2), Link(0, 0, 0, 1), Link(0, 1, 0, 0), Link(1, 0, 0, 1), Link(1, 1, 0, 0), Link(0, 1, 0, 2), 
-		Link(1, -1, 0, 1), Link(-1, 0, 0, 3), Link(-1, 0, 1, 3), Link(0, 1, 0, 0), Link(0, 1, 1, 0), Link(-1, 0, 0, 2), Link(0, 1, 0, 2), Link(0, 0, 0, 0), Link(0, 0, 0, 3), Link(0, 0, 1, 0), Link(0, 0, 1, 3), Link(0, 0, 0, 2), 
-		Link(1, 0, 0, 0), Link(-1, -1, 0, 3), Link(-1, 0, 0, 3), Link(0, -1, 0, 1), Link(0, 0, 0, 1), Link(-1, 0, -1, 2), Link(0, 0, 0, 2), Link(0, -1, -1, 1), Link(0, -1, 0, 3), Link(0, 0, -1, 1), Link(0, 0, 0, 3), Link(0, 0, -1, 2), 
-		Link(1, 0, 0, 1), Link(-1, 0, 0, 3), Link(-1, 0, 1, 3), Link(0, 0, 0, 0), Link(0, 0, 1, 0), Link(-1, 1, 0, 2), Link(0, 0, 0, 2), Link(0, 0, 0, 3), Link(0, 0, 1, 3), Link(0, 1, 0, 0), Link(0, 1, 1, 0), Link(0, 1, 0, 2), 
-		Link(1, 0, 1, 0), Link(-1, -1, 0, 3), Link(-1, 0, 0, 3), Link(0, -1, -1, 1), Link(0, 0, -1, 1), Link(-1, 0, 0, 2), Link(0, 0, -1, 2), Link(0, -1, 0, 1), Link(0, -1, 0, 3), Link(0, 0, 0, 1), Link(0, 0, 0, 3), Link(0, 0, 0, 2)
-	}, {
-		Link(0, 0, -1, 1), Link(0, 0, 0, 2), Link(0, 0, 1, 0), Link(0, 1, 0, 2), Link(0, 1, 1, 0), Link(-1, 0, 1, 3), Link(0, 0, 0, 3), Link(-1, 0, 0, 2), Link(-1, 1, 0, 2), Link(0, 0, 0, 0), Link(0, 1, 0, 0), Link(-1, 0, 0, 3), 
-		Link(0, 0, -1, 2), Link(0, 0, 0, 1), Link(0, 0, 1, 0), Link(1, 0, 0, 1), Link(1, 0, 1, 0), Link(0, -1, 1, 3), Link(0, 0, 0, 3), Link(0, -1, 0, 1), Link(0, 0, 0, 0), Link(1, -1, 0, 1), Link(1, 0, 0, 0), Link(0, -1, 0, 3), 
-		Link(0, 0, 0, 0), Link(0, 0, -1, 1), Link(0, 0, -1, 2), Link(0, 0, 0, 1), Link(0, 0, 0, 2), Link(-1, 0, 0, 3), Link(0, -1, 0, 3), Link(-1, 0, -1, 2), Link(-1, 0, 0, 2), Link(0, -1, -1, 1), Link(0, -1, 0, 1), Link(-1, -1, 0, 3), 
-		Link(0, 0, 0, 1), Link(0, 0, 0, 0), Link(0, 0, 0, 2), Link(0, 1, 0, 0), Link(0, 1, 0, 2), Link(-1, 0, 0, 3), Link(0, 0, 1, 3), Link(-1, 0, 0, 2), Link(-1, 1, 0, 2), Link(0, 0, 1, 0), Link(0, 1, 1, 0), Link(-1, 0, 1, 3), 
-		Link(0, 0, 0, 2), Link(0, 0, 0, 0), Link(0, 0, 0, 1), Link(1, 0, 0, 0), Link(1, 0, 0, 1), Link(0, -1, 0, 3), Link(0, 0, 1, 3), Link(0, -1, 0, 1), Link(0, 0, 1, 0), Link(1, -1, 0, 1), Link(1, 0, 1, 0), Link(0, -1, 1, 3), 
-		Link(0, 1, -1, 2), Link(0, -1, 0, 1), Link(0, 0, 1, 0), Link(1, -1, 0, 1), Link(1, 0, 1, 0), Link(0, -1, 0, 3), Link(0, 0, 1, 3), Link(0, 0, 0, 0), Link(0, 0, 0, 1), Link(1, 0, 0, 0), Link(1, 0, 0, 1), Link(0, 0, 0, 3), 
-		Link(0, 1, 0, 0), Link(0, -1, -1, 1), Link(0, -1, 0, 1), Link(0, 0, -1, 2), Link(0, 0, 0, 2), Link(-1, -1, 0, 3), Link(0, 0, 0, 3), Link(-1, 0, -1, 2), Link(-1, 0, 0, 2), Link(0, 0, -1, 1), Link(0, 0, 0, 1), Link(-1, 0, 0, 3), 
-		Link(0, 1, 0, 2), Link(0, -1, 0, 1), Link(0, 0, 0, 0), Link(1, -1, 0, 1), Link(1, 0, 0, 0), Link(0, -1, 1, 3), Link(0, 0, 0, 3), Link(0, 0, 0, 1), Link(0, 0, 1, 0), Link(1, 0, 0, 1), Link(1, 0, 1, 0), Link(0, 0, 1, 3), 
-		Link(1, 0, -1, 1), Link(-1, 0, 0, 2), Link(-1, 1, 0, 2), Link(0, 0, 1, 0), Link(0, 1, 1, 0), Link(-1, 0, 0, 3), Link(0, 0, 1, 3), Link(0, 0, 0, 0), Link(0, 0, 0, 2), Link(0, 1, 0, 0), Link(0, 1, 0, 2), Link(0, 0, 0, 3), 
-		Link(1, 0, 0, 0), Link(-1, 0, -1, 2), Link(-1, 0, 0, 2), Link(0, 0, -1, 1), Link(0, 0, 0, 1), Link(-1, -1, 0, 3), Link(0, 0, 0, 3), Link(0, -1, -1, 1), Link(0, -1, 0, 1), Link(0, 0, -1, 2), Link(0, 0, 0, 2), Link(0, -1, 0, 3), 
-		Link(1, 0, 0, 1), Link(-1, 0, 0, 2), Link(-1, 1, 0, 2), Link(0, 0, 0, 0), Link(0, 1, 0, 0), Link(-1, 0, 1, 3), Link(0, 0, 0, 3), Link(0, 0, 0, 2), Link(0, 0, 1, 0), Link(0, 1, 0, 2), Link(0, 1, 1, 0), Link(0, 0, 1, 3), 
-		Link(1, 1, 0, 0), Link(-1, 0, -1, 2), Link(-1, 0, 0, 2), Link(0, -1, -1, 1), Link(0, -1, 0, 1), Link(-1, 0, 0, 3), Link(0, -1, 0, 3), Link(0, 0, -1, 1), Link(0, 0, -1, 2), Link(0, 0, 0, 1), Link(0, 0, 0, 2), Link(0, 0, 0, 3)
-	}};
+#ifdef VCC
+const int cell_sz = 2, nb_sz = 8, Q_sz = 3;
+const Link nb_pos[2][8] = {
+	{ Link(-1, -1, -1, 1), Link(0, -1, -1, 1), Link(-1, 0, -1, 1), Link(0, 0, -1, 1), Link(-1, -1, 0, 1), Link(0, -1, 0, 1), Link(-1, 0, 0, 1), Link(0, 0, 0, 1) },
+	{ Link( 0,  0,  0, 0), Link(1,  0,  0, 0), Link( 0, 1,  0, 0), Link(1, 1,  0, 0), Link( 0,  0, 1, 0), Link(1,  0, 1, 0), Link( 0, 1, 1, 0), Link(1, 1, 1, 0) }
+};
+const Ind<2> Qtable[2][28] = {
+	{ ind(1, 0), ind(2, 0), ind(3, 1), ind(3, 2), ind(4, 0), ind(5, 1), ind(5, 4), ind(6, 2), ind(6, 4), ind(7, 3), ind(7, 5), ind(7, 6), ind(2, 1), ind(3, 0),
+	  ind(4, 1), ind(4, 2), ind(5, 0), ind(5, 3), ind(6, 0), ind(6, 3), ind(6, 5), ind(7, 1), ind(7, 2), ind(7, 4), ind(4, 3), ind(5, 2), ind(6, 1), ind(7, 0) },
+	{ ind(1, 0), ind(2, 0), ind(3, 1), ind(3, 2), ind(4, 0), ind(5, 1), ind(5, 4), ind(6, 2), ind(6, 4), ind(7, 3), ind(7, 5), ind(7, 6), ind(2, 1), ind(3, 0),
+	  ind(4, 1), ind(4, 2), ind(5, 0), ind(5, 3), ind(6, 0), ind(6, 3), ind(6, 5), ind(7, 1), ind(7, 2), ind(7, 4), ind(4, 3), ind(5, 2), ind(6, 1), ind(7, 0) }
+};
+const int Qtable_sz[2][3] = { { 12, 12, 4 }, { 12, 12, 4 } };
+#endif  // VCC
 
-const Vecf<4> Q_weights = vecf(4.f, 2.f, 4.f, 1.f);
-/*
-#   ifdef LL3_CPP
-const Ind<2> corr2_00[6] = { ind(0,11), ind(1,10), ind(2,8), ind(3,6), ind(4,9), ind(5,7) }; // 6
-const Ind<2> corr2_01[6] = { ind(0,10), ind(1,8), ind(2,6), ind(3,5), ind(4,11), ind(7,9) }; // 6
-const Ind<2> corr2_02[6] = { ind(0,10), ind(1,7), ind(2,5), ind(3,11), ind(4,8), ind(6,9) }; // 6
-const Ind<2> corr2_03[6] = { ind(0,10), ind(1,7), ind(2,11), ind(3,8), ind(4,5), ind(6,9) }; // 6
+#ifdef FCC
+const int cell_sz = 4, nb_sz = 12, Q_sz = 4;
+const Link nb_pos[4][12] = {
+	{ Link(0, -1, -1, 1), Link(-1, 0, -1, 2), Link( 0, 0, -1, 1), Link(0, 0, -1, 2), Link(-1, -1, 0, 3), Link(0, -1, 0, 1),
+	  Link(0, -1,  0, 3), Link(-1, 0,  0, 2), Link(-1, 0,  0, 3), Link(0, 0,  0, 1), Link( 0,  0, 0, 2), Link(0,  0, 0, 3) },
+	{ Link(-1, 0, 0, 2), Link(-1, 0, 0, 3), Link( 0, 0, 0, 0), Link(0, 0, 0, 2), Link(0, 0, 0, 3), Link(-1, 1, 0, 2),
+	  Link( 0, 1, 0, 0), Link( 0, 1, 0, 2), Link(-1, 0, 1, 3), Link(0, 0, 1, 0), Link(0, 0, 1, 3), Link( 0, 1, 1, 0) },
+	{ Link(0, -1, 0, 1), Link(0, -1, 0, 3), Link(1, -1, 0, 1), Link(0, 0, 0, 0), Link(0, 0, 0, 1), Link(0, 0, 0, 3),
+	  Link(1,  0, 0, 0), Link(1,  0, 0, 1), Link(0, -1, 1, 3), Link(0, 0, 1, 0), Link(0, 0, 1, 3), Link(1, 0, 1, 0) },
+	{ Link(0, 0, -1, 1), Link(0, 0, -1, 2), Link(1, 0, -1, 1), Link(0, 1, -1, 2), Link(0, 0, 0, 0), Link(0, 0, 0, 1),
+	  Link(0, 0,  0, 2), Link(1, 0,  0, 0), Link(1, 0,  0, 1), Link(0, 1,  0, 0), Link(0, 1, 0, 2), Link(1, 1, 0, 0) }
+};
+const Ind<2> Qtable[4][66] = {
+	{ ind(1, 0), ind(2, 1), ind(3, 0), ind(3, 2), ind(4, 0), ind(4, 1), ind(5, 4), ind(6, 0), ind(6, 3), ind(6, 5), ind(7, 4), ind(7, 5), ind(8, 1), ind(8, 2), ind(8, 7), ind(9, 7), ind(9, 8), ind(10, 5), ind(10, 6), ind(10, 9), ind(11, 2), ind(11, 3), ind(11, 9), ind(11, 10), ind(2, 0), ind(3, 1), ind(5, 0), ind(6, 4), ind(7, 1), ind(8, 4), ind(9, 2), ind(9, 5), ind(10, 3), ind(10, 7), ind(11, 6), ind(11, 8), ind(4, 2), ind(4, 3), ind(5, 1), ind(5, 3), ind(6, 1), ind(6, 2), ind(7, 0), ind(7, 2), ind(7, 6), ind(8, 0), ind(8, 3), ind(8, 5), ind(9, 1), ind(9, 3), ind(9, 4), ind(9, 6), ind(10, 0), ind(10, 2), ind(10, 4), ind(10, 8), ind(11, 0), ind(11, 1), ind(11, 5), ind(11, 7), ind(5, 2), ind(7, 3), ind(8, 6), ind(9, 0), ind(10, 1), ind(11, 4) },
+	{ ind(1, 0), ind(2, 0), ind(2, 1), ind(3, 2), ind(4, 2), ind(4, 3), ind(5, 1), ind(6, 1), ind(6, 4), ind(6, 5), ind(7, 4), ind(7, 6), ind(8, 0), ind(8, 5), ind(9, 0), ind(9, 3), ind(9, 8), ind(10, 3), ind(10, 7), ind(10, 9), ind(11, 5), ind(11, 7), ind(11, 8), ind(11, 10), ind(3, 0), ind(4, 1), ind(5, 0), ind(6, 2), ind(7, 3), ind(7, 5), ind(8, 1), ind(9, 2), ind(10, 4), ind(10, 8), ind(11, 6), ind(11, 9), ind(3, 1), ind(4, 0), ind(5, 2), ind(5, 4), ind(6, 0), ind(6, 3), ind(7, 1), ind(7, 2), ind(8, 2), ind(8, 3), ind(8, 6), ind(8, 7), ind(9, 1), ind(9, 4), ind(9, 5), ind(9, 7), ind(10, 0), ind(10, 2), ind(10, 5), ind(10, 6), ind(11, 0), ind(11, 1), ind(11, 3), ind(11, 4), ind(5, 3), ind(7, 0), ind(8, 4), ind(9, 6), ind(10, 1), ind(11, 2) },
+	{ ind(1, 0), ind(2, 1), ind(3, 0), ind(3, 1), ind(4, 3), ind(5, 3), ind(5, 4), ind(6, 1), ind(6, 2), ind(6, 5), ind(7, 5), ind(7, 6), ind(8, 0), ind(8, 2), ind(9, 0), ind(9, 4), ind(9, 8), ind(10, 4), ind(10, 7), ind(10, 9), ind(11, 2), ind(11, 7), ind(11, 8), ind(11, 10), ind(2, 0), ind(4, 0), ind(5, 1), ind(6, 3), ind(7, 2), ind(7, 4), ind(8, 1), ind(9, 3), ind(10, 5), ind(10, 8), ind(11, 6), ind(11, 9), ind(3, 2), ind(4, 1), ind(5, 0), ind(5, 2), ind(6, 0), ind(6, 4), ind(7, 1), ind(7, 3), ind(8, 3), ind(8, 4), ind(8, 6), ind(8, 7), ind(9, 1), ind(9, 2), ind(9, 5), ind(9, 7), ind(10, 0), ind(10, 2), ind(10, 3), ind(10, 6), ind(11, 0), ind(11, 1), ind(11, 4), ind(11, 5), ind(4, 2), ind(7, 0), ind(8, 5), ind(9, 6), ind(10, 1), ind(11, 3) },
+	{ ind(1, 0), ind(2, 1), ind(3, 0), ind(3, 2), ind(4, 0), ind(4, 1), ind(5, 4), ind(6, 4), ind(6, 5), ind(7, 1), ind(7, 2), ind(7, 6), ind(8, 6), ind(8, 7), ind(9, 0), ind(9, 3), ind(9, 5), ind(10, 5), ind(10, 8), ind(10, 9), ind(11, 2), ind(11, 3), ind(11, 8), ind(11, 10), ind(2, 0), ind(3, 1), ind(5, 0), ind(6, 1), ind(7, 4), ind(8, 2), ind(8, 5), ind(9, 4), ind(10, 3), ind(10, 6), ind(11, 7), ind(11, 9), ind(4, 2), ind(4, 3), ind(5, 1), ind(5, 3), ind(6, 0), ind(6, 2), ind(7, 0), ind(7, 3), ind(7, 5), ind(8, 1), ind(8, 3), ind(8, 4), ind(9, 1), ind(9, 2), ind(9, 6), ind(9, 8), ind(10, 0), ind(10, 2), ind(10, 4), ind(10, 7), ind(11, 0), ind(11, 1), ind(11, 5), ind(11, 6), ind(5, 2), ind(6, 3), ind(8, 0), ind(9, 7), ind(10, 1), ind(11, 4) }
+};
+const int Qtable_sz[4][4] = { { 24, 12, 24, 6 }, { 24, 12, 24, 6 }, { 24, 12, 24, 6 }, { 24, 12, 24, 6 } };
+#endif  // FCC
 
-const Ind<2> corr2_10[24] = { ind(0,7), ind(0,8), ind(0,9), ind(0,10), ind(1,5), ind(1,6), ind(1,9), ind(1,11), ind(2,4), ind(2,6), ind(2,7), ind(2,11), ind(3,4), ind(3,5), ind(3,8), ind(3,10), ind(4,10), ind(4,11), ind(5,8), ind(5,11), ind(6,7), ind(6,9), ind(7,10), ind(8,9) }; // 24
-const Ind<2> corr2_11[24] = { ind(0,6), ind(0,8), ind(0,9), ind(0,11), ind(1,5), ind(1,7), ind(1,10), ind(1,11), ind(2,4), ind(2,5), ind(2,9), ind(2,10), ind(3,4), ind(3,6), ind(3,7), ind(3,8), ind(4,8), ind(4,10), ind(5,9), ind(5,11), ind(6,7), ind(6,11), ind(7,10), ind(8,9) }; // 24
-const Ind<2> corr2_12[24] = { ind(0,5), ind(0,7), ind(0,9), ind(0,11), ind(1,4), ind(1,6), ind(1,10), ind(1,11), ind(2,3), ind(2,4), ind(2,9), ind(2,10), ind(3,7), ind(3,8), ind(3,10), ind(4,9), ind(4,11), ind(5,6), ind(5,8), ind(5,11), ind(6,8), ind(6,10), ind(7,8), ind(7,9) }; // 24
-const Ind<2> corr2_13[24] = { ind(0,4), ind(0,7), ind(0,9), ind(0,11), ind(1,3), ind(1,6), ind(1,10), ind(1,11), ind(2,5), ind(2,7), ind(2,8), ind(2,10), ind(3,5), ind(3,9), ind(3,11), ind(4,6), ind(4,8), ind(4,11), ind(5,9), ind(5,10), ind(6,8), ind(6,10), ind(7,8), ind(7,9) }; // 24
-
-const Ind<2> corr2_20[12] = { ind(0,3), ind(0,6), ind(1,2), ind(1,8), ind(2,10), ind(3,11), ind(4,5), ind(4,7), ind(5,9), ind(6,11), ind(7,9), ind(8,10) }; // 12
-const Ind<2> corr2_21[12] = { ind(0,3), ind(0,5), ind(1,2), ind(1,6), ind(2,8), ind(3,10), ind(4,7), ind(4,9), ind(5,10), ind(6,8), ind(7,11), ind(9,11) }; // 12
-const Ind<2> corr2_22[12] = { ind(0,4), ind(0,8), ind(1,2), ind(1,5), ind(2,7), ind(3,6), ind(3,9), ind(4,10), ind(5,7), ind(6,11), ind(8,10), ind(9,11) }; // 12
-const Ind<2> corr2_23[12] = { ind(0,3), ind(0,8), ind(1,4), ind(1,5), ind(2,6), ind(2,9), ind(3,10), ind(4,7), ind(5,7), ind(6,11), ind(8,10), ind(9,11) }; // 12
-
-const Ind<2> *corr2_table[12] = { corr2_00, corr2_01, corr2_02, corr2_03,
-								  corr2_10, corr2_11, corr2_12, corr2_13,
-								  corr2_20, corr2_21, corr2_22, corr2_23 };
-#   endif
-*/
-#endif
 //------------------------------------------------------------------------------
 struct Cell{
 	Vecf<3> m[cell_sz];
@@ -182,66 +76,76 @@ struct Cell{
 //------------------------------------------------------------------------------
 class Model{
 	RandN01<float> randN01;
-	File ftm, ftvals; // эволюция одного магнитного момента и tvals
+	aiw::File ftm, ftvals; // эволюция одного магнитного момента и tvals
 	ZCube<Cell, 3> data[4];
 
 	inline Vecf<3> Hexch(int cube, size_t i, const ZCubeNb<3> &nb, int k) const {
 		Vecf<3> H;
 		for(const auto &l: nb_pos[k]){ H += data[cube][i+nb[l.off]].m[l.cell];
-			WOUT(H, l.off, l.cell, i, i+nb[l.off]);
+			// WOUT(H, l.off, l.cell, i, i+nb[l.off]);
 		}
 		return H*J;
 	}	
-	// void calc_av();  // считаем средние значения W, M, M2 и тд
-	void calc_av2();  // считаем средние значения W, M, M2 и тд, в тч Q в лоб относительно атома i
+	void calc_av();  // считаем средние значения W, M, M2 и тд
 	
 	std::string path;
-	std::vector<Vec<4> > chain_lambda;
-	void calc_chain_lambda();
 
-	MagnonsStochFieldGen MG;	
+#ifdef MAGNONS
+	MagnonsStochFieldGen MG;
+#endif // MAGNONS
+
+	std::vector<int> f_buf, fz_buf;
+	int Nth;  // число тредов
+	int eq_count = 0;     // число шагов по расчету средних
+
+	std::vector<aiw::Mesh<aiw::Vecf<3>, 3> > Ms_arr;
+	std::vector<aiw::File> fMs;  // файлы для сброса Ms
+
+	std::vector<double> Q_buf, eta_k_buf;
+
 public:
 	bool stoch0 = false;
 	bool helic0 = false;
+	int helic_n = 1;   // длина спиновой волны
 	bool entropy0 = false; // старт с гауссовым распределением с нулевой энтропией
 	float helic_z = .1;
 	float J, gamma, alpha, dt; double T, K, t; // обменный интеграл, температура, прецессия, диссипация, анизотропия, время и шаг по времени
-	// int n_q;   // число энергетических уровней при квантовании m
-	// float mu = -8;  // химический потенциал в распределении Бозе
-	// int mg_split = 1;  // минимально возможная длина магнона по каждой из координат (как L/mg_split)
-	// float zeta;
-	float cL;   // множитель в f_k, зависит от размера области
+
+	float cL;   // множитель в f_k, зависит от размера области ???
 	
 	aiw::Vecf<3> Hext, nK, M0 = vecf(0.f, 0.f, 1.f);                 // внешнее поле, направление анизотропии и направление начлаьной намагниченности
 
-	bool calc_eq=false; // включает расчет средних
-	int eq_count=0, eq_f_count=0;     // число шагов по расчету средних
+	bool calc_eq = false; // включает расчет средних
 	aiw::Vec<4> W, Weq; // W, Wexch, Wext, Wanis
 	aiw::Vec<3> M, M2, Meq, M2eq;	
 	double Mabs_eq = 0.;
-	// aiw::Vec<3> corr2, corr2eq;
 	aiw::Vec<4> Q, Qeq;
-	aiw::Vec<4> eta, eta_eq;  // <eta^n>
-	aiw::Vec<3> PHI, PHIeq, THETA, THETAeq, MMM, MMMeq, UpsilonM, UpsilonMeq;
-	aiw::Vec<6> XI, XIeq;  // Sigma xx, yy, zz, xy, xz, yz
-	double Psi, Psi_eq;  // , Ts, S, Seq;
-	void clean_av_eq();
-	
-	bool f_use = true;
-	aiw::Sphere<float> f, f_eq; 
+	aiw::Vec<4> eta, eta_eq, eta_k2, eta_k2_eq, eta_k3, eta_k3_eq, eta_k4, eta_k4_eq;  // <eta^n>
+	aiw::Vec<3> PHI, PHIeq, THETA, THETAeq, UpsilonM, UpsilonMeq;
+	aiw::Vec<6> XI, XIeq;  
+	double Psi, Psi_eq;  
 
-	int data_rank, f_rank;
+	std::vector<double> Ms, Ms_eq;  // массив средних модулей намагниченности для разных масштабов, [0] - пары ближ. соседей, [1] - удвоенная ячейка, .back() - весь обр.
+	void dump_Ms_arr();
+	
+	aiw::Sphere<float> f, f_eq;
+
+	int fz_sz = 0;  // размер f1(m_z), если 0 не используется
+	std::vector<float> fz, fz_eq;
+	void dump_fz(const char *path, bool eq) const;
+
+	void clean_av_eq();
+
+	bool out_tm0 = false; // вывод эволюции одного атома
+	bool Hinv = false;    // внешнее поле антиколлинеарно <m>
+	
+	int data_rank, f_rank = -1;
 	void init(const char *path);
 
 	bool parallel = true;
 	void calc(int steps);
 
-	void calc_f(); // считаем ф.р.
 	void finish();
-
-	bool calc_cl = false; // calc_chain_lambda
-	//	void dump(aiw::IOstream &S);
-	//	void load(aiw::IOstream &S);
 };
 //------------------------------------------------------------------------------
 #endif //LANDAU_LIFSHITZ_HPP

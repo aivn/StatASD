@@ -13,6 +13,7 @@ model.stoch0 = False
 model.helic0 = not model.stoch0
 model.entropy0 = False
 model.helic_z = .1
+model.helic_n = 1
 model.parallel = True
 model.f_rank = 2
 model.f_use = False
