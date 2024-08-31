@@ -64,7 +64,7 @@ void Model::init(const char *path_){
 	} else {
 		M0 /= M0.abs(); M = M0;
 		for(size_t i=0; i<data[0].size(); i++) data[0][i].init(M0);
-		W[1] = -nb_sz*J/2; W[2] = -M0*Hext; W[3] = -K*(nK*M0)*(nK*M0); W[0] = W[1]+W[2]+W[3];
+		W[1] = -nb_sz*J/2; W[2] = -M0*Hext; W[3] = -K*(nK*M0)*(nK*M0); W[0] = W[1]+W[2]+W[3];  eta = vec(1.);
 	}
 	t = 0.;
 	if(out_tm0){ ftm = File("%tm0.dat", "w", path_); ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0)); }
@@ -101,7 +101,7 @@ void Model::calc(int steps){
 			for(int k=0; k<cell_sz; k++){
 				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &dm = data[3][i].m[k];
 				Vecf<3> Hex = Hexch(0, i, nb, k);
-				WOUT(i, k, Hex); 
+				// WOUT(i, k, Hex); 
 				Vecf<3> H = Hex + Hext + 2*K*nK*m0*nK; 
 				Vecf<3> dmdt = m0%(-gamma*H -alpha*m0%H);
 				m1 = m0 + .5f*dt*dmdt;
@@ -264,7 +264,7 @@ void Model::calc_av(){  // считаем средние значения
 
 	M  = vec(Mx, My, Mz)/(data_sz*cell_sz);
 	M2 = vec(M2x, M2y, M2z)/(data_sz*cell_sz);
-	W  = vec(-J*eta[0]/2+We+Wa, -J*eta[0]/2, We, Wa)/(data_sz*cell_sz);
+	W  = vec(-J*eta1/2+We+Wa, -J*eta1/2, We, Wa)/(data_sz*cell_sz);
 	eta = vecf(eta1, eta2, eta3, eta4)/(data_sz*cell_sz*nb_sz);
 
 	PHI = vec(phi_x, phi_y, phi_z)/(data_sz*cell_sz);
@@ -276,6 +276,7 @@ void Model::calc_av(){  // считаем средние значения
 	Ms[1] /= data_sz; 
 	
 #ifdef CALC_Q
+	Q = eta_k2 = eta_k3 = eta_k4 = vec(0.);
 	for(int i=0, sz=Q_buf.size(); i<sz; i++) Q[i%Q_sz] += Q_buf[i]/(data_sz*cell_sz*Qtable_sz[0][i%Q_sz]);
 	for(int i=0, sz=eta_k_buf.size(); i<sz; i++){
 #ifdef FCC
@@ -303,12 +304,12 @@ void Model::calc_av(){  // считаем средние значения
 
 	if(f_rank>=0){
 		float  df = 1/(4*M_PI/f.size()*data_sz*cell_sz);
-		for(int i=0, sz=f_buf.size(); i<sz; i++) f[i%sz] += df*f_buf[i];
+		for(int i=0, sz=f_buf.size(), fsz=f.size(); i<sz; i++) f[i%fsz] += df*f_buf[i];
 		if(calc_eq) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] += f[i];
 	}
 	if(fz_sz>0){
 		float  df = 1./(2/fz_sz*data_sz*cell_sz);
-		for(int i=0, sz=fz_buf.size(); i<sz; i++) fz[i%sz] += df*fz_buf[i];
+		for(int i=0, sz=fz_buf.size(); i<sz; i++) fz[i%fz_sz] += df*fz_buf[i];
 		if(calc_eq) for(int i=0; i<fz_sz; i++) fz_eq[i] += fz[i];
 	}	
 	if(calc_eq) eq_count++;
