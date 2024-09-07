@@ -35,7 +35,7 @@ model.M0 = vecf(0., 0., calc.M0z)
 Tc = 1.5 if cvar.mode=='CCC' else 2.2 if cvar.mode=='VCC' else 3.3
 if Tc-.8<=model.T and model.T<=Tc+1.4: calc.t_eq *= 2
 if Tc-.4<=model.T and model.T<=Tc+.7: calc.t_eq *= 2
-if Tc-.2<=model.T and model.T<=Tc+.3: calc.t_eq *= 2
+if Tc-.2<=model.T and model.T<=Tc+.3: calc.t_eq *= 4
 calc.t_max = calc.t_eq+calc.t_relax
 
 model.init(calc.path)

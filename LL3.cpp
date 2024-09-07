@@ -254,7 +254,7 @@ void Model::calc_av(){  // считаем средние значения
 				float e = mj_buf[ik[0]]*mj_buf[ik[1]], en = e, Qk = mj_buf[ik[0]]*(m0%(m0%mj_buf[ik[1]]));
 				int off = (thID*Q_sz+qt)*4; eta_k_buf[off] += e; for(int i=1; i<4; i++){ en *= e; eta_k_buf[off+i] += en; }
 				Q_buf[thID*Q_sz+qt] += Qk;
-				if(j++>ssz){ qt++; if(qt<Q_sz) ssz += Qtable_sz[k][qt]; }
+				if(++j>=ssz){ qt++; if(qt<Q_sz) ssz += Qtable_sz[k][qt]; }
 			}
 #endif  // CALC_Q
 			//------- конец расчета Q ----------------- 
