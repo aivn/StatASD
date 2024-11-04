@@ -30,6 +30,7 @@ const Ind<2> Qtable[1][15] = {
 	  ind(3, 2), ind(4, 1), ind(5, 0) }
 };
 const int Qtable_sz[1][2] = { { 12, 3 } };
+const Vec<4> Qcoeff = Vec<4>(4., 1., 0., 0.);
 #endif  // SC
 
 #ifdef VCC
@@ -45,6 +46,7 @@ const Ind<2> Qtable[2][28] = {
 	  ind(4, 1), ind(4, 2), ind(5, 0), ind(5, 3), ind(6, 0), ind(6, 3), ind(6, 5), ind(7, 1), ind(7, 2), ind(7, 4), ind(4, 3), ind(5, 2), ind(6, 1), ind(7, 0) }
 };
 const int Qtable_sz[2][3] = { { 12, 12, 4 }, { 12, 12, 4 } };
+const Vec<4> Qcoeff = Vec<4>(3., 3., 1., 0.);
 #endif  // VCC
 
 #ifdef FCC
@@ -66,6 +68,7 @@ const Ind<2> Qtable[4][66] = {
 	{ ind(1, 0), ind(2, 1), ind(3, 0), ind(3, 2), ind(4, 0), ind(4, 1), ind(5, 4), ind(6, 4), ind(6, 5), ind(7, 1), ind(7, 2), ind(7, 6), ind(8, 6), ind(8, 7), ind(9, 0), ind(9, 3), ind(9, 5), ind(10, 5), ind(10, 8), ind(10, 9), ind(11, 2), ind(11, 3), ind(11, 8), ind(11, 10), ind(2, 0), ind(3, 1), ind(5, 0), ind(6, 1), ind(7, 4), ind(8, 2), ind(8, 5), ind(9, 4), ind(10, 3), ind(10, 6), ind(11, 7), ind(11, 9), ind(4, 2), ind(4, 3), ind(5, 1), ind(5, 3), ind(6, 0), ind(6, 2), ind(7, 0), ind(7, 3), ind(7, 5), ind(8, 1), ind(8, 3), ind(8, 4), ind(9, 1), ind(9, 2), ind(9, 6), ind(9, 8), ind(10, 0), ind(10, 2), ind(10, 4), ind(10, 7), ind(11, 0), ind(11, 1), ind(11, 5), ind(11, 6), ind(5, 2), ind(6, 3), ind(8, 0), ind(9, 7), ind(10, 1), ind(11, 4) }
 };
 const int Qtable_sz[4][4] = { { 24, 12, 24, 6 }, { 24, 12, 24, 6 }, { 24, 12, 24, 6 }, { 24, 12, 24, 6 } };
+const Vec<4> Qcoeff = Vec<4>(4., 2., 4., 1.);
 #endif  // FCC
 
 //------------------------------------------------------------------------------
@@ -102,15 +105,18 @@ class Model{
 	std::vector<aiw::File> fMs;  // файлы для сброса Ms
 
 	std::vector<double> Q_buf, eta_k_buf;
-
+	double eta_old, dot_eta;  // эффективная схемная температура (может работать при CALC_Q)
 public:
 	bool stoch0 = false;
 	bool helic0 = false;
 	int helic_n = 1;   // длина спиновой волны
-	bool entropy0 = false; // старт с гауссовым распределением с нулевой энтропией
+	bool entropy0 = false;  // старт с гауссовым распределением с нулевой энтропией
 	float helic_z = .1;
-	float J, gamma, alpha, dt; double T, K, t; // обменный интеграл, температура, прецессия, диссипация, анизотропия, время и шаг по времени
+	float J, gamma, alpha, dt; double T, K, t;  // обменный интеграл, температура, прецессия, диссипация, анизотропия, время и шаг по времени
 
+	bool patchT = false;   // режим температурной поправки  (может работать при CALC_Q)
+	double T_sc_weight, T_sc, Tsc_eq;
+	
 	float cL;   // множитель в f_k, зависит от размера области ???
 	
 	aiw::Vecf<3> Hext, nK, M0 = vecf(0.f, 0.f, 1.f);                 // внешнее поле, направление анизотропии и направление начлаьной намагниченности

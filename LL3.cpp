@@ -66,14 +66,14 @@ void Model::init(const char *path_){
 		for(size_t i=0; i<data[0].size(); i++) data[0][i].init(M0);
 		W[1] = -nb_sz*J/2; W[2] = -M0*Hext; W[3] = -K*(nK*M0)*(nK*M0); W[0] = W[1]+W[2]+W[3];  eta = vec(1.);
 	}
-	t = 0.;
+	t = 0.;   T_sc = T; Tsc_eq = 0;
 	if(out_tm0){ ftm = File("%tm0.dat", "w", path_); ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0)); }
 	ftvals = File("%tvals.dat", "w", path_);
-	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta\n");
+	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc\n");
 
 	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
-	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %  %  %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]),  UpsilonM.abs(), zeta).flush();
+	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %  %  %  0 %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]),  UpsilonM.abs(), zeta, T_sc).flush();
 
 	// if(calc_cl) chain_lambda.resize(1<<(data_rank-1));
 
@@ -91,16 +91,22 @@ void Model::init(const char *path_){
 //------------------------------------------------------------------------------
 void Model::calc(int steps){
 #ifndef MAGNONS
-	float sghT = sqrt(2*dt*alpha*T); // 2*sqrt(dt*alpha*T);
+	// float sghT = sqrt(2*dt*alpha*std::max(0., std::min(T, 2*T-(T_sc+T_sc_old)/2))); // v3 2*sqrt(dt*alpha*T);
+	// float sghT = sqrt(2*dt*alpha*std::max(0., std::min(T, 2*T-T_sc))); // v2 2*sqrt(dt*alpha*T);
+	// float sghT = sqrt(2*dt*alpha*std::max(0., 2*T-T_sc)); // v1 2*sqrt(dt*alpha*T);
+	// float sghT = sqrt(2*dt*alpha*(patchT && !calc_eq? T_sc: T)); // v4,5 2*sqrt(dt*alpha*T);
+	float sghT = sqrt(2*dt*alpha*(patchT ? T_sc: T)); // v4,5 2*sqrt(dt*alpha*T);
 #endif // MAGNONS
-	size_t data_sz = data[0].size();
+	size_t data_sz = data[0].size();  eta_old = eta[0];
 	for(int Nt=0; Nt<steps; Nt++){
-#pragma omp parallel for if(parallel)
+		eta_old = 0;
+#pragma omp parallel for reduction(+:eta_old) if(parallel)
 		for(size_t i=0; i<data_sz; ++i){
 			ZCubeNb<3> nb = data[0].get_nb(i, 7);
 			for(int k=0; k<cell_sz; k++){
 				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &dm = data[3][i].m[k];
 				Vecf<3> Hex = Hexch(0, i, nb, k);
+				eta_old += Hex*m0;
 				// WOUT(i, k, Hex); 
 				Vecf<3> H = Hex + Hext + 2*K*nK*m0*nK; 
 				Vecf<3> dmdt = m0%(-gamma*H -alpha*m0%H);
@@ -109,6 +115,7 @@ void Model::calc(int steps){
 			}
 			// exit(0);
 		}
+		eta_old /= data_sz*nb_sz*cell_sz;
 		//-----------
 #pragma omp parallel for if(parallel)
 		for(size_t i=0; i<data_sz; ++i){
@@ -192,8 +199,8 @@ void Model::calc(int steps){
 
 	}
 	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
-	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]), UpsilonM.abs(), zeta).flush();
+	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %   %  %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]), UpsilonM.abs(), zeta, dot_eta, T_sc).flush();
 }
 //------------------------------------------------------------------------------
 void Model::calc_av(){  // считаем средние значения
@@ -294,12 +301,19 @@ void Model::calc_av(){  // считаем средние значения
 		for(const Ind<3>& pos: irange(dst.bbox())){ Vecf<3> &ms = dst[pos]; ms *= .125f; Ms[R+1] += ms.abs(); }
 		Ms[R+1] /= dst.size();
 	}
+	dot_eta = (eta[0]-eta_old)/dt;
+#ifdef CALC_Q
+	// T_sc_old = T_sc;
+	// if(patchT) T_sc = 2*(-dot_eta/(4*alpha) + Hext*UpsilonM - K*Psi  - .5*J*(eta[1]-1+Qcoeff*Q))/(eta[0]+eta_old); 	
+	T_sc =  (1-T_sc_weight)*T_sc + T_sc_weight*std::max(0., 2*T - (-dot_eta/(4*alpha) + Hext*UpsilonM - K*Psi  - .5*J*(eta[1]-1+Qcoeff*Q))/eta[0]);
+#endif //CALC_Q
 	if(calc_eq){ 
 		Meq += M; Mabs_eq += M.abs(); M2eq += M2; Weq += W; Qeq += Q; eta_eq += eta;
 		PHIeq += PHI; THETAeq += THETA; XIeq += XI; Psi_eq += Psi; UpsilonMeq += UpsilonM;
 		eta_k2_eq += eta_k2;  eta_k3_eq += eta_k3;  eta_k4_eq += eta_k4;
 
 		for(int i=0, sz=Ms.size(); i<sz; i++) Ms_eq[i] += Ms[i];
+		Tsc_eq += T_sc;
 	}
 
 	if(f_rank>=0){
@@ -311,7 +325,7 @@ void Model::calc_av(){  // считаем средние значения
 		float  df = 1./(2/fz_sz*data_sz*cell_sz);
 		for(int i=0, sz=fz_buf.size(); i<sz; i++) fz[i%fz_sz] += df*fz_buf[i];
 		if(calc_eq) for(int i=0; i<fz_sz; i++) fz_eq[i] += fz[i];
-	}	
+	}
 	if(calc_eq) eq_count++;
 }
 //------------------------------------------------------------------------------
@@ -324,6 +338,7 @@ void Model::clean_av_eq(){
 	for(double &x: Ms_eq) x = 0;
 	if(f_rank>=0) f_eq.fill(0.f);
 	for(float &v: fz_eq) v = 0;
+	Tsc_eq = 0;
 }
 //------------------------------------------------------------------------------
 void Model::finish(){
@@ -342,7 +357,8 @@ void Model::finish(){
 		XIeq /= eq_count;
 		Psi_eq /= eq_count;
 		UpsilonMeq /= eq_count;
-
+		Tsc_eq /= eq_count;
+		
 		for(double &x: Ms_eq) x /= eq_count;
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] /= eq_count;
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] /= eq_count;
@@ -363,6 +379,7 @@ void Model::finish(){
 		// Seq = S;
 		Psi_eq = Psi;
 		UpsilonMeq = UpsilonM;
+		Tsc_eq = T_sc;
 
 		Ms_eq = Ms;
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] = f[i];
