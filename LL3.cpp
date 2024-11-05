@@ -30,7 +30,7 @@ inline double Upsilon(double M, double eta){
 		 - 13.542*M2*M - 3.72091*zeta2*zeta);
 }
 //------------------------------------------------------------------------------
-void Model::init(const char *path_){
+bool Model::init(const char *path_, const char *spins){
 	Nth = omp_get_max_threads();
 	randN01.init(Nth);
 	path = path_; // M0 /= M0.abs();  
@@ -39,46 +39,41 @@ void Model::init(const char *path_){
 	if(f_rank>=0){ f.init(f_rank, 0, 1); f_eq.init(f_rank, 0, 1); f_eq.fill(0.f); f_buf.resize(Nth*f.size()); }
 	if(fz_sz){ fz.resize(fz_sz); fz_eq.resize(fz_sz, 0.f); fz_buf.resize(Nth*fz_sz); }
 
-	for(int k=0; k<4; k++) data[k].init(data_rank);
-	if(stoch0){
-		rand_init();
-		for(size_t i=0; i<data[0].size(); i++) for(int k=0; k<cell_sz; k++){
-				data[0][i].m[k] = sph_cell(rand()%sph_cells_num(5), 5)+M0;  data[0][i].m[k] /= data[0][i].m[k].abs();
+	if(!spins){
+		for(int k=0; k<4; k++) data[k].init(data_rank);
+		if(stoch0){
+			rand_init();
+			for(size_t i=0; i<data[0].size(); i++) for(int k=0; k<cell_sz; k++){
+					data[0][i].m[k] = sph_cell(rand()%sph_cells_num(5), 5)+M0;  data[0][i].m[k] /= data[0][i].m[k].abs();
+				}
+			calc_av(); // S = log(4*M_PI);
+		} else if(helic0) {
+			for(size_t i=0; i<data[0].size(); i++){
+				double phi = 2*M_PI*data[0].offset2pos(i)[0]*helic_n/data[0].bbox()[0];
+				Vecf<3> m0; m0[0] = cos(phi); m0[1] = sin(phi); m0[2] = helic_z;
+				data[0][i].init(m0/m0.abs()); // ???
 			}
-		calc_av(); // S = log(4*M_PI);
-	} else if(helic0) {
-		for(size_t i=0; i<data[0].size(); i++){
-			double phi = 2*M_PI*data[0].offset2pos(i)[0]*helic_n/data[0].bbox()[0];
-			Vecf<3> m0; m0[0] = cos(phi); m0[1] = sin(phi); m0[2] = helic_z;
-			data[0][i].init(m0/m0.abs()); // ???
+			// S = 0;
+			calc_av();
+		} else if(entropy0) {	
+			M0 /= M0.abs(); rand_init();
+			for(size_t i=0, sz=data[0].size(); i<sz; i++) for(int k=0; k<cell_sz; k++){
+					Vecf<3> m = M0 + M0%rand_gaussV<3, float>()*0.2638f;
+					data[0][i].init(m/m.abs());
+				}
+			calc_av(); // S = 0;
+		} else {
+			M0 /= M0.abs(); M = M0;
+			for(size_t i=0; i<data[0].size(); i++) data[0][i].init(M0);
+			W[1] = -nb_sz*J/2; W[2] = -M0*Hext; W[3] = -K*(nK*M0)*(nK*M0); W[0] = W[1]+W[2]+W[3];  eta = vec(1.);
 		}
-		// S = 0;
-		calc_av();
-	} else if(entropy0) {	
-		M0 /= M0.abs(); rand_init();
-		for(size_t i=0, sz=data[0].size(); i<sz; i++) for(int k=0; k<cell_sz; k++){
-				Vecf<3> m = M0 + M0%rand_gaussV<3, float>()*0.2638f;
-				data[0][i].init(m/m.abs());
-			}
-		calc_av(); // S = 0;
-	} else {
-		M0 /= M0.abs(); M = M0;
-		for(size_t i=0; i<data[0].size(); i++) data[0][i].init(M0);
-		W[1] = -nb_sz*J/2; W[2] = -M0*Hext; W[3] = -K*(nK*M0)*(nK*M0); W[0] = W[1]+W[2]+W[3];  eta = vec(1.);
 	}
 	t = 0.;   T_sc = T; Tsc_eq = 0;
 	if(out_tm0){ ftm = File("%tm0.dat", "w", path_); ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0)); }
-	ftvals = File("%tvals.dat", "w", path_);
-	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc\n");
-
-	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
-	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %  %  %  0 %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]),  UpsilonM.abs(), zeta, T_sc).flush();
-
 	// if(calc_cl) chain_lambda.resize(1<<(data_rank-1));
 
 	Ms_arr.resize(data_rank);  for(int i=0; i<data_rank; i++) Ms_arr[i].init(Ind<3>(1<<(data_rank-i)), Vec<3>(), Vec<3>(double(1<<data_rank)));
-	Ms.resize(data_rank+1); Ms_eq.resize(data_rank+1, 0.);
+	Ms.resize(data_rank+1);  Ms_eq.resize(data_rank+1, 0.);
 
 #ifdef CALC_Q
 	Q_buf.resize(Nth*Q_sz);  eta_k_buf.resize(Nth*Q_sz*4);
@@ -87,6 +82,20 @@ void Model::init(const char *path_){
 #ifdef MAGNONS
 	MG.init(data_rank, T, cL, dt*alpha);
 #endif // MAGNONS
+
+	if(spins && !load_data(spins)) return false;	
+	open_tvals(path_);
+
+	return true;
+}
+//------------------------------------------------------------------------------
+void Model::open_tvals(const char *path_){
+	ftvals = File("%tvals.dat", "w", path_);
+	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc\n");
+
+	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
+	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %  %  %  0 %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]),  UpsilonM.abs(), zeta, T_sc).flush();
 }
 //------------------------------------------------------------------------------
 void Model::calc(int steps){
@@ -196,7 +205,6 @@ void Model::calc(int steps){
 		
 		t += dt; if(out_tm0) ftm("% % %\n", t, data[0][0].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 		if(calc_eq || Nt==steps-1) calc_av();
-
 	}
 	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
 	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %   %  %\n",
@@ -394,6 +402,20 @@ void Model::dump_fz(const char *path, bool eq) const {
 void Model::dump_Ms_arr(){
 	if(!fMs.size()){ fMs.resize(Ms_arr.size()); for(int i=0, sz=Ms_arr.size(); i<sz; i++) fMs[i].open("%/Ms%.msh", "w", path, i+1); }
 	for(int i=0, sz=Ms_arr.size(); i<sz; i++) Ms_arr[i].dump(fMs[i]);
+}
+//------------------------------------------------------------------------------
+void Model::dump_data(const char *path) const {
+	char head[64]; for(int i=0; i<64; i++){ head[i] = 0; } snprintf(head, 64, "%s %i", mode, data_rank);
+	File fout(path, "w"); fout.write(head, 64); fout.write(&(data[0][0]), data[0].size()*sizeof(Cell));
+}
+bool Model::load_data(const char *path){
+	File fin(path, "r"); char head[64];  if(fin.read(head, 64)!=64) return false;
+	std::string rmode; int rrank; std::stringstream(head)>>rmode>>rrank;
+	if(rmode!=mode){ WMSG(mode, rmode, data_rank, rrank);  return false; }
+	data_rank = rrank; for(int k=0; k<4; k++) data[k].init(data_rank);
+	if(fin.read(&(data[0][0]), data[0].size()*sizeof(Cell))!=data[0].size()*sizeof(Cell)){ WMSG("file too short"); return false; }
+	calc_av();
+	return true;
 }
 //------------------------------------------------------------------------------
 // void Model::dump(aiw::IOstream &S);

@@ -146,12 +146,16 @@ public:
 	bool Hinv = false;    // внешнее поле антиколлинеарно <m>
 	
 	int data_rank, f_rank = -1;
-	void init(const char *path);
+	bool init(const char *path, const char *spins=nullptr);
+	void open_tvals(const char *path);
 
 	bool parallel = true;
 	void calc(int steps);
 
 	void finish();
+
+	void dump_data(const char *path) const;
+    bool load_data(const char *path);
 };
 //------------------------------------------------------------------------------
 #endif //LANDAU_LIFSHITZ_HPP
