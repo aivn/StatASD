@@ -131,6 +131,7 @@ public:
 	aiw::Vec<6> XI, XIeq;  
 	double Psi, Psi_eq;  
 
+	int Ms_start = 0;
 	std::vector<double> Ms, Ms_eq;  // массив средних модулей намагниченности для разных масштабов, [0] - пары ближ. соседей, [1] - удвоенная ячейка, .back() - весь обр.
 	void dump_Ms_arr();
 	

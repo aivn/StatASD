@@ -400,8 +400,8 @@ void Model::dump_fz(const char *path, bool eq) const {
 	for(int i=0; i<fz_sz; i++) fout<<(i+.5)*2/fz_sz<<' '<<(eq? fz_eq: fz)[i]<<'\n';
 }
 void Model::dump_Ms_arr(){
-	if(!fMs.size()){ fMs.resize(Ms_arr.size()); for(int i=0, sz=Ms_arr.size(); i<sz; i++) fMs[i].open("%/Ms%.msh", "w", path, i+1); }
-	for(int i=0, sz=Ms_arr.size(); i<sz; i++) Ms_arr[i].dump(fMs[i]);
+	if(!fMs.size()){ fMs.resize(Ms_arr.size()-Ms_start); for(int i=Ms_start, sz=Ms_arr.size(); i<sz; i++) fMs[i].open("%/Ms%.msh", "w", path, i+1); }
+	for(int i=Ms_start, sz=Ms_arr.size(); i<sz; i++) Ms_arr[i].dump(fMs[i]);
 }
 //------------------------------------------------------------------------------
 void Model::dump_data(const char *path) const {

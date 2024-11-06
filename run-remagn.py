@@ -6,7 +6,7 @@ from aiwlib.iostream import *
 from aiwlib.SphereF import *
 from aiwlib.racs import *
 
-calc = Calc(t_relax=50., t_remagn=100., steps=50, _repo='remagn', Hz=-0.5, M0z=1., mode=cvar.mode, f_rank=2, tau=0.)
+calc = Calc(t_relax=50., t_remagn=100., steps=100, _repo='remagn', Hz=-0.5, M0z=1., mode=cvar.mode, f_rank=2, tau=0.)
 
 model = calc.wrap(Model())
 model.stoch0 = False
@@ -15,7 +15,8 @@ model.entropy0 = False
 model.helic_z = .1
 model.parallel = True
 model.f_rank = -1
-model.data_rank = 5
+model.data_rank = 8
+model.Ms_start = 2
 model.fz_sz = 100
 model.J = 1.
 model.dt = 1e-2
@@ -59,4 +60,5 @@ while model.t<calc.t_remagn:
     if model.f_rank>=0:  model.f.dump(fsph); fsph.flush()
     calc.set_progress((t_init+model.t)/calc.t_max, 'calc')
 
+model.dump_data(calc.path+'spins')
 model.finish()
