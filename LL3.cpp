@@ -295,11 +295,11 @@ void Model::calc_av(){  // считаем средние значения
 	for(int i=0, sz=Q_buf.size(); i<sz; i++) Q[i%Q_sz] += Q_buf[i]/(data_sz*cell_sz*Qtable_sz[0][i%Q_sz]);
 	for(int i=0, sz=eta_k_buf.size(); i<sz; i++){
 #ifdef FCC
-		int qt = i/4%Q_sz-1;
+		int qt = i/4%Q_sz-1, qtt = qt+1; if(qt<0) continue;
 #else  // FCC
-		int qt = i/4%Q_sz;
+		int qt = i/4%Q_sz, qtt = qt;
 #endif // FCC
-		if(qt>=0) (qt==0? eta_k2: (qt==1? eta_k3: eta_k4))[i%4] += eta_k_buf[i]/(data_sz*cell_sz*Qtable_sz[0][i/4%Q_sz]);
+		(qt==0? eta_k2: (qt==1? eta_k3: eta_k4))[i%4] += eta_k_buf[i]/(data_sz*cell_sz*Qtable_sz[0][qtt]);
 	}
 #endif // CALC_Q
 

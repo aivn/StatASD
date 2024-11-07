@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/python2 
 import os, math
 from LL3 import *
 from aiwlib.vec import *
