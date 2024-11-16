@@ -33,6 +33,7 @@ const int Qtable_sz[1][2] = { { 12, 3 } };
 const Vec<4> Qcoeff = Vec<4>(4., 1., 0., 0.);
 const int corr_direct_sz = 3;
 const Ind<3> corr_direct[3] = {ind(1, 0, 0), ind(0, 1, 0), ind(0, 0, 1)};
+const Vecf<3> coord[1] = { Vecf<3>() };
 #endif  // SC
 
 #ifdef BCC
@@ -51,6 +52,7 @@ const int Qtable_sz[2][3] = { { 12, 12, 4 }, { 12, 12, 4 } };
 const Vec<4> Qcoeff = Vec<4>(3., 3., 1., 0.);
 const int corr_direct_sz = 4;
 const Ind<3> corr_direct[4] = {ind(1, 1, 1), ind(-1, 1, 1), ind(1, -1, 1), ind(1, 1, -1), };
+const Vecf<3> coord[2] = { Vecf<3>(), Vecf<3>(.5f) };
 #endif  // BCC
 
 #ifdef FCC
@@ -75,6 +77,7 @@ const int Qtable_sz[4][4] = { { 24, 12, 24, 6 }, { 24, 12, 24, 6 }, { 24, 12, 24
 const Vec<4> Qcoeff = Vec<4>(4., 2., 4., 1.);
 const int corr_direct_sz = 6;
 const Ind<3> corr_direct[6] = {ind(0, 1, 1), ind(1, 0, 1), ind(1, 1, 0), ind(0, -1, 1), ind(-1, 0, 1), ind(-1, 1, 0)};
+const Vecf<3> coord[4] = { vecf(0.f,0.f,0.f), vecf(0.f,.5f,.5f), vecf(.5f,0.f,.5f), vecf(.5f,.5f,.0f) };
 #endif  // FCC
 
 //------------------------------------------------------------------------------
@@ -111,12 +114,16 @@ class Model{
 	std::vector<aiw::File> fMs;  // файлы для сброса Ms
 
 	std::vector<double> Q_buf, eta_k_buf;
-	double eta_old, dot_eta;  // эффективная схемная температура (может работать только при CALC_Q)
+	double eta_old, dot_eta = 0.;  // для расчета Ts
 
 	std::vector<float> fz, fz_eq;
 	std::vector<int> corr_direct_offs;  // массив смещений для расчета корреляционных функций, размер corr_direct_sz*(1<<data_rank*3)*corr_max;
 	std::vector<aiw::Vec<4> > corr, corr_eq, corr_buf;  // корреляционная функция
 	aiw::File corr_fout;                                // файл для вывода корреляционной функции
+
+	void open_tvals();   // открывает заново файлы tvals.dat, corr.dat и tm0.dat,  вызывает расчет средних
+	void drop_tvals();
+	bool init_conditions = false;  // флаг задания н.у.
 public:
 	float J = 1.f;                          ///< обменный интеграл
 	float gamma = 1.f;                      ///< гиромагнитное отношение
@@ -182,25 +189,16 @@ public:
 	bool out_tm0 = false;  ///< вкл/выкл вывод эволюции одного атома в файл на каждом шаге
 	
 	int data_rank = 5;  ///< определяет размер моделируемой области как 2^data_rank по каждому измерению
-	bool init(const char *path, const char *spins=nullptr);
+	void init(const char *path);
 
-	aiw::Vecf<3> M0 = vecf(0.f, 0.f, 1.f);  ///< направление начальной намагниченности
-	// void start_uniform();
-	// void start_helic(); 
-	// void start_gauss();
-	// void start_stoch();
-	bool stoch0 = false;
-	bool helic0 = false;
-	int helic_n = 1;   // длина спиновой волны
-	bool entropy0 = false;  ///< старт с гауссовым распределением с нулевой энтропией
-	float helic_z = .1;
-
-
-
-	void open_tvals(const char *path);
+	// все варианты задания н.у. устанавливают t=0 и открывают заново файлы tvals.dat, corr.dat и tm0.dat
+	aiw::Vecf<3> M0 = vecf(0.f, 0.f, 1.f);  ///< начальная намагниченность для всех вариантов н.у.
+	int helic_n = 1;                        ///< длина спиновой волны при н.у. helic
+	void start_gauss();
+	void start_helic(); 
 
 	int threads = 0;  ///< задает число тредов, если =0 то берется системное знаечние
-	void calc(int steps);
+	void calc(int steps);  ///< считает на steps шагов и в конце расситывает средние. При первом вызвое вызывает start_gauss() если не было другого задания н.у.
 	double rt_init = 0;   ///< суммарное время инициализации
 	double rt_calc = 0;   ///< суммарное время расчета
 	double rt_diagn = 0;  ///< суммарное время расчета диагностики
@@ -208,7 +206,7 @@ public:
 	void finish();  ///< рассчитывает все равновесные значения
 
 	void dump_data(const char *path) const;  ///< сбрасывает состояние (все магнитные моменты) в бинарном формате
-    bool load_data(const char *path);        ///< загружает состояние (все магнитные моменты)  в бинарном формате
+    bool load_data(const char *path);        ///< загружает состояние (все магнитные моменты)  в бинарном формате, трактуется как задание н.у.
 };
 //------------------------------------------------------------------------------
 #endif //LANDAU_LIFSHITZ_HPP

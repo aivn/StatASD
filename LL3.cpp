@@ -1,5 +1,6 @@
 // #define LL3_CPP
 #include <fstream>
+#include <map>
 #include <omp.h>
 #include <aiwlib/llbe>
 #include "LL3.hpp"
@@ -30,7 +31,7 @@ inline double Upsilon(double M, double eta){
 		 - 13.542*M2*M - 3.72091*zeta2*zeta);
 }
 //------------------------------------------------------------------------------
-bool Model::init(const char *path_, const char *spins){
+void Model::init(const char *path_){
 	double t0 = omp_get_wtime();
 	if(threads!=0) omp_set_num_threads(threads);
 	Nth = omp_get_max_threads();
@@ -41,37 +42,7 @@ bool Model::init(const char *path_, const char *spins){
 	if(f_rank>=0){ f.init(f_rank, 0, 1); f_eq.init(f_rank, 0, 1); f_eq.fill(0.f); f_buf.resize(Nth*f.size()); }
 	if(fz_sz){ fz.resize(fz_sz); fz_eq.resize(fz_sz, 0.f); fz_buf.resize(Nth*fz_sz); }
 
-	if(!spins){
-		for(int k=0; k<4; k++) data[k].init(data_rank);
-		if(stoch0){
-			rand_init();
-			for(size_t i=0; i<data[0].size(); i++) for(int k=0; k<cell_sz; k++){
-					data[0][i].m[k] = sph_cell(rand()%sph_cells_num(5), 5)+M0;  data[0][i].m[k] /= data[0][i].m[k].abs();
-				}
-			calc_av(); // S = log(4*M_PI);
-		} else if(helic0) {
-			for(size_t i=0; i<data[0].size(); i++){
-				double phi = 2*M_PI*data[0].offset2pos(i)[0]*helic_n/data[0].bbox()[0];
-				Vecf<3> m0; m0[0] = cos(phi); m0[1] = sin(phi); m0[2] = helic_z;
-				data[0][i].init(m0/m0.abs()); // ???
-			}
-			// S = 0;
-			calc_av();
-		} else if(entropy0) {	
-			M0 /= M0.abs(); rand_init();
-			for(size_t i=0, sz=data[0].size(); i<sz; i++) for(int k=0; k<cell_sz; k++){
-					Vecf<3> m = M0 + M0%rand_gaussV<3, float>()*0.2638f;
-					data[0][i].init(m/m.abs());
-				}
-			calc_av(); // S = 0;
-		} else {
-			M0 /= M0.abs(); M = M0;
-			for(size_t i=0; i<data[0].size(); i++) data[0][i].init(M0);
-			W[1] = -nb_sz*J/2; W[2] = -M0*Hext; W[3] = -K*(nK*M0)*(nK*M0); W[0] = W[1]+W[2]+W[3];  eta = vec(1.);
-		}
-	}
 	t = 0.;   T_sc = T; Tsc_eq = 0;
-	if(out_tm0){ ftm = File("%tm0.dat", "w", path_); ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0)); }
 	// if(calc_cl) chain_lambda.resize(1<<(data_rank-1));
 
 	Ms_arr.resize(data_rank-Ms_start);
@@ -85,6 +56,8 @@ bool Model::init(const char *path_, const char *spins){
 			corr_direct_offs[i] = data[0].pos2offset(pos);
 		}
 	}
+
+	rand_init();
 	
 #ifdef CALC_Q
 	Q_buf.resize(Nth*Q_sz);  eta_k_buf.resize(Nth*Q_sz*4);
@@ -93,25 +66,71 @@ bool Model::init(const char *path_, const char *spins){
 #ifdef MAGNONS
 	MG.init(data_rank, T, cL, dt*alpha);
 #endif // MAGNONS
-
 	rt_init += omp_get_wtime()-t0;
-
-	if(spins && !load_data(spins)) return false;	
-	open_tvals(path_);
-
-	return true;
 }
 //------------------------------------------------------------------------------
-void Model::open_tvals(const char *path_){
-	ftvals = File("%tvals.dat", "w", path_);
-	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc\n");
-
+void Model::start_gauss(){
+	double t0 = omp_get_wtime();
+	for(int k=0; k<4; k++) data[k].init(data_rank);
+	float M0abs = M0.abs();
+	if(M0abs>=.99){
+		M0 /= M0abs;
+		for(int i=0, sz=data[0].size(); i<sz; i++) data[0][i].init(M0);
+	} else {
+		Vecf<3> p; if(M0abs>1e-3f) p = LLBE::invL(M0abs)/M0abs*M0;  
+		Sphere<double> ff(5, 1); for(int i=0, sz=ff.size(); i<sz; i++) ff[i] = expf(ff.center(i)*p);
+		std::map<float, int> ftable; float s = 0; for(int i=0, sz=ff.size(); i<sz; i++){ s += ff[i]; ftable[s] = i; }
+		std::random_device rd; std::mt19937 gen;  gen.seed(rd());  std::uniform_real_distribution<float>  rnd(0, s);
+		for(size_t i=0; i<data[0].size(); i++) for(int k=0; k<cell_sz; k++){
+				data[0][i].m[k] = ff.center(ftable.lower_bound(rnd(gen))->second);
+			}
+	}
+	rt_init += omp_get_wtime()-t0;
+	init_conditions = true;  // флаг задания н.у.
+	open_tvals();
+}
+void Model::start_helic(){
+	double t0 = omp_get_wtime();
+	float M0abs = M0.abs(); if(M0abs>=1 || M0abs<1e-3){  start_gauss();  return; }
+	Vecf<3> n = M0/M0abs, m0 = M0 + perp(n)*sqrtf(1-M0*M0);
+	for(int k=0; k<4; k++) data[k].init(data_rank);
+	for(size_t i=0, sz=data[0].size(); i<sz; i++){
+		float z = data[0].offset2pos(i)[2];
+		for(int k=0; k<cell_sz; k++) data[0][i].m[k] = rotate(m0, n, 2*M_PI*(z+coord[k][2])*helic_n/data[0].bbox()[2]);
+	}
+	rt_init += omp_get_wtime()-t0;
+	init_conditions = true;  // флаг задания н.у.
+	open_tvals();
+}
+//------------------------------------------------------------------------------
+void Model::open_tvals(){
+	t = 0;
+	if(out_tm0){
+		ftm.close(); ftm = File("%tm0.dat", "w", path);
+		ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
+	}
+	ftvals.close(); ftvals = File("%tvals.dat", "w", path);
+	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz"
+		   "  eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc\n");
+	if(corr_max){
+		corr_fout.close(); corr_fout = File("%corr.dat", "w", path);
+		corr_fout.printf("#:t  eta1 eta1_2 eta1_3 eta1_4"); for(int i=0; i<corr_max; i++) corr_fout("    eta% eta%_2 eta%_3 eta%_4", i+2, i+2, i+2, i+2);
+		corr_fout.printf("\n");
+	}
+	calc_av();	drop_tvals();
+}
+void Model::drop_tvals(){
 	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
-	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %  %  %  0 %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]),  UpsilonM.abs(), zeta, T_sc).flush();
+	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %   %  %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]), UpsilonM.abs(), zeta, dot_eta, T_sc).flush();
+	if(corr_max){
+		corr_fout("%  %", t, eta);  for(int i=0; i<corr_max; i++) corr_fout("    %", corr[i]);
+		corr_fout.printf("\n");  corr_fout.flush();
+	}
 }
 //------------------------------------------------------------------------------
 void Model::calc(int steps){
+	if(!init_conditions) start_gauss();  // флаг задания н.у.
 #ifndef MAGNONS
 	// float sghT = sqrt(2*dt*alpha*std::max(0., std::min(T, 2*T-(T_sc+T_sc_old)/2))); // v3 2*sqrt(dt*alpha*T);
 	// float sghT = sqrt(2*dt*alpha*std::max(0., std::min(T, 2*T-T_sc))); // v2 2*sqrt(dt*alpha*T);
@@ -220,9 +239,7 @@ void Model::calc(int steps){
 		t += dt; if(out_tm0) ftm("% % %\n", t, data[0][0].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 		if(calc_eq || Nt==steps-1) calc_av();
 	}
-	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
-	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %   %  %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]), UpsilonM.abs(), zeta, dot_eta, T_sc).flush();
+	drop_tvals();
 }
 //------------------------------------------------------------------------------
 void Model::calc_av(){  // считаем средние значения
@@ -429,12 +446,14 @@ void Model::dump_data(const char *path) const {
 	File fout(path, "w"); fout.write(head, 64); fout.write(&(data[0][0]), data[0].size()*sizeof(Cell));
 }
 bool Model::load_data(const char *path){
+	double t0 = omp_get_wtime();
 	File fin(path, "r"); char head[64];  if(fin.read(head, 64)!=64) return false;
 	std::string rmode; int rrank; std::stringstream(head)>>rmode>>rrank;
 	if(rmode!=mode){ WMSG(mode, rmode, data_rank, rrank);  return false; }
 	data_rank = rrank; for(int k=0; k<4; k++) data[k].init(data_rank);
 	if(fin.read(&(data[0][0]), data[0].size()*sizeof(Cell))!=data[0].size()*sizeof(Cell)){ WMSG("file too short"); return false; }
-	calc_av();
+	rt_init += omp_get_wtime()-t0;
+	open_tvals(); init_conditions = true;  // флаг задания н.у.
 	return true;
 }
 //------------------------------------------------------------------------------
