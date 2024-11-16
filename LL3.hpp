@@ -31,9 +31,11 @@ const Ind<2> Qtable[1][15] = {
 };
 const int Qtable_sz[1][2] = { { 12, 3 } };
 const Vec<4> Qcoeff = Vec<4>(4., 1., 0., 0.);
+const int corr_direct_sz = 3;
+const Ind<3> corr_direct[3] = {ind(1, 0, 0), ind(0, 1, 0), ind(0, 0, 1)};
 #endif  // SC
 
-#ifdef VCC
+#ifdef BCC
 const int cell_sz = 2, nb_sz = 8, Q_sz = 3;
 const Link nb_pos[2][8] = {
 	{ Link(-1, -1, -1, 1), Link(0, -1, -1, 1), Link(-1, 0, -1, 1), Link(0, 0, -1, 1), Link(-1, -1, 0, 1), Link(0, -1, 0, 1), Link(-1, 0, 0, 1), Link(0, 0, 0, 1) },
@@ -47,7 +49,9 @@ const Ind<2> Qtable[2][28] = {
 };
 const int Qtable_sz[2][3] = { { 12, 12, 4 }, { 12, 12, 4 } };
 const Vec<4> Qcoeff = Vec<4>(3., 3., 1., 0.);
-#endif  // VCC
+const int corr_direct_sz = 4;
+const Ind<3> corr_direct[4] = {ind(1, 1, 1), ind(-1, 1, 1), ind(1, -1, 1), ind(1, 1, -1), };
+#endif  // BCC
 
 #ifdef FCC
 const int cell_sz = 4, nb_sz = 12, Q_sz = 4;
@@ -69,6 +73,8 @@ const Ind<2> Qtable[4][66] = {
 };
 const int Qtable_sz[4][4] = { { 24, 12, 24, 6 }, { 24, 12, 24, 6 }, { 24, 12, 24, 6 }, { 24, 12, 24, 6 } };
 const Vec<4> Qcoeff = Vec<4>(4., 2., 4., 1.);
+const int corr_direct_sz = 6;
+const Ind<3> corr_direct[6] = {ind(0, 1, 1), ind(1, 0, 1), ind(1, 1, 0), ind(0, -1, 1), ind(-1, 0, 1), ind(-1, 1, 0)};
 #endif  // FCC
 
 //------------------------------------------------------------------------------
@@ -105,58 +111,104 @@ class Model{
 	std::vector<aiw::File> fMs;  // файлы для сброса Ms
 
 	std::vector<double> Q_buf, eta_k_buf;
-	double eta_old, dot_eta;  // эффективная схемная температура (может работать при CALC_Q)
+	double eta_old, dot_eta;  // эффективная схемная температура (может работать только при CALC_Q)
+
+	std::vector<float> fz, fz_eq;
+	std::vector<int> corr_direct_offs;  // массив смещений для расчета корреляционных функций, размер corr_direct_sz*(1<<data_rank*3)*corr_max;
+	std::vector<aiw::Vec<4> > corr, corr_eq, corr_buf;  // корреляционная функция
+	aiw::File corr_fout;                                // файл для вывода корреляционной функции
 public:
+	float J = 1.f;                          ///< обменный интеграл
+	float gamma = 1.f;                      ///< гиромагнитное отношение
+	float alpha = .1f;                      ///< коэффициент диссипации
+	float dt = .01f;                        ///< шаг по времени
+	double T = 1.;                          ///< температура
+	double K = 0.;                          ///< анизотропия
+	aiw::Vecf<3> Hext;                      ///< внешнее поле
+	aiw::Vecf<3> nK = vecf(0.f, 0.f, 1.f);  ///< направление анизотропии
+
+	bool patchT = false;       ///< режим температурной поправки  (может работать только при CALC_Q)
+	double T_sc_weight = 0.1;  ///< вес в линейном фильтре при вычислении температурной поповки
+	double T_sc;               ///< текущая схемная температура (вычисляется только при CALC_Q)
+	double Tsc_eq;             ///< равновесная схемная температура
+	
+	float cL;   ///< множитель в f_k, зависит от размера области ???
+	
+	double t = 0.;           ///< текущее время
+	bool calc_eq = false;    ///< включает расчет средних
+	aiw::Vec<4> W;           ///< энергия --- W (полная), Wexch (обменная), Wext (вклад внешнего поля), Wanis (анизотропии)
+	aiw::Vec<4> Weq;         ///< равновесная энергия --- W (полная), Wexch (обменная), Wext (вклад внешнего поля), Wanis (анизотропии)
+	aiw::Vec<3> M;           ///< средняя намагниченность
+	aiw::Vec<3> Meq;         ///< равновесная средняя намагниченность
+	aiw::Vec<3> M2;          ///< вторые моменты намагниченности по осям
+	aiw::Vec<3> M2eq;	     ///< равновесные вторые моменты намагниченности по осям
+	double Mabs_eq = 0;      ///< равновесный модуль намагниченности (рекомендуется использовать вместо него Meq.abs())
+	aiw::Vec<4> Q;           ///< Q_k=<m_i*(m_j%(m_j%m_k))> по координационным сферам
+	aiw::Vec<4> Qeq;         ///< равновесные Q_k=<m_i*(m_j%(m_j%m_k))> по координационным сферам
+	aiw::Vec<4> eta;         ///< степени ближнего параметра порядка <eta>, <eta^2>, <eta^3>, <eta^4>
+	aiw::Vec<4> eta_eq;      ///< равновесные степени ближнего параметра порядка <eta>, <eta^2>, <eta^3>, <eta^4>
+	aiw::Vec<4> eta_k2;      ///< степени параметра порядка <eta>, <eta^2>, <eta^3>, <eta^4> для второй координационной сферы
+	aiw::Vec<4> eta_k2_eq;   ///< равновесные степени параметра порядка <eta>, <eta^2>, <eta^3>, <eta^4> для второй координационной сферы
+	aiw::Vec<4> eta_k3;      ///< степени параметра порядка <eta>, <eta^2>, <eta^3>, <eta^4> для третьей координационной сферы
+	aiw::Vec<4> eta_k3_eq;   ///< равновесные степени параметра порядка <eta>, <eta^2>, <eta^3>, <eta^4> для третьей координационной сферы
+	aiw::Vec<4> eta_k4;      ///< степени параметра порядка <eta>, <eta^2>, <eta^3>, <eta^4> для четвертой координационной сферы
+	aiw::Vec<4> eta_k4_eq;   ///< равновесные степени параметра порядка <eta>, <eta^2>, <eta^3>, <eta^4> для четвертой координационной сферы
+	aiw::Vec<3> PHI;         ///< вклад анизотропии в прецессию M в первом уравнении CMD
+	aiw::Vec<3> PHIeq;       ///< равновесный вклад анизотропии в прецессию M в первом уравнении CMD
+	aiw::Vec<3> THETA;       ///< вклад анизотропии в диссипацию M в первом уравнении CMD
+	aiw::Vec<3> THETAeq;     ///< равновесный вклад анизотропии в диссипацию M в первом уравнении CMD
+	aiw::Vec<3> UpsilonM;    ///< обменное поле Upsilon*<m> в первом уравнении CMD
+	aiw::Vec<3> UpsilonMeq;  ///< равновесное обменное поле Upsilon*<m> в первом уравнении CMD
+	aiw::Vec<6> XI;          ///< компоненты матрицы XI: Xi_xx, Xi_yy, Xi_zz, Xi_xy, Xi_xz, Xi_yz (вклад внешнего поля в диссипацию) в первом уравнении CMD
+	aiw::Vec<6> XIeq;        ///< равновесные компоненты матрицы XI: Xi_xx, Xi_yy, Xi_zz, Xi_xy, Xi_xz, Xi_yz (вклад внешнего поля в диссипацию) в первом уравнении CMD
+	double Psi;              ///< Psi=-<m0_i*(m_j%(m_j%nK))*(m_j*nK)>  --- вклад анизотропии во втором уравнении CMD
+	double Psi_eq = 0;       ///< равновесный Psi=-<m0_i*(m_j%(m_j%nK))*(m_j*nK)>  --- вклад анизотропии во втором уравнении CMD
+
+	int Ms_start = 0;  ///< с какого ранга (размера большой ячейки) начинать строить Ms
+	void dump_Ms_arr();
+	
+	int f_rank = -1;          ///< ранг разбиение сферической сетки для расчета одночастичной функции распределения f(m)
+	aiw::Sphere<float> f;     ///< одночастичная функция распределения f(m)
+	aiw::Sphere<float> f_eq;  ///< равновесная одночастичной функции распределения f(m)
+
+	int fz_sz = 0;  ///< размер одночастичной функции распределения f1(m_z), если 0 функция не строится
+	void dump_fz(const char *path, bool eq) const;  ///< сброс одночастичной функции распределения f1(m_z) в .dat файл
+
+	int corr_max = 0;  ///< размер корреляционной функции (максимальное удаление между частицами в ячейках)
+	aiw::Vec<4> get_corr_eq(int i) const { return corr_eq.at(i); }  // для финальной сериализации, возвращает степени eta_far
+	
+	void clean_av_eq();
+
+	bool out_tm0 = false;  ///< вкл/выкл вывод эволюции одного атома в файл на каждом шаге
+	
+	int data_rank = 5;  ///< определяет размер моделируемой области как 2^data_rank по каждому измерению
+	bool init(const char *path, const char *spins=nullptr);
+
+	aiw::Vecf<3> M0 = vecf(0.f, 0.f, 1.f);  ///< направление начальной намагниченности
+	// void start_uniform();
+	// void start_helic(); 
+	// void start_gauss();
+	// void start_stoch();
 	bool stoch0 = false;
 	bool helic0 = false;
 	int helic_n = 1;   // длина спиновой волны
-	bool entropy0 = false;  // старт с гауссовым распределением с нулевой энтропией
+	bool entropy0 = false;  ///< старт с гауссовым распределением с нулевой энтропией
 	float helic_z = .1;
-	float J, gamma, alpha, dt; double T, K, t;  // обменный интеграл, температура, прецессия, диссипация, анизотропия, время и шаг по времени
 
-	bool patchT = false;   // режим температурной поправки  (может работать при CALC_Q)
-	double T_sc_weight, T_sc, Tsc_eq;
-	
-	float cL;   // множитель в f_k, зависит от размера области ???
-	
-	aiw::Vecf<3> Hext, nK, M0 = vecf(0.f, 0.f, 1.f);                 // внешнее поле, направление анизотропии и направление начлаьной намагниченности
 
-	bool calc_eq = false; // включает расчет средних
-	aiw::Vec<4> W, Weq; // W, Wexch, Wext, Wanis
-	aiw::Vec<3> M, M2, Meq, M2eq;	
-	double Mabs_eq = 0.;
-	aiw::Vec<4> Q, Qeq;
-	aiw::Vec<4> eta, eta_eq, eta_k2, eta_k2_eq, eta_k3, eta_k3_eq, eta_k4, eta_k4_eq;  // <eta^n>
-	aiw::Vec<3> PHI, PHIeq, THETA, THETAeq, UpsilonM, UpsilonMeq;
-	aiw::Vec<6> XI, XIeq;  
-	double Psi, Psi_eq;  
 
-	int Ms_start = 0;
-	std::vector<double> Ms, Ms_eq;  // массив средних модулей намагниченности для разных масштабов, [0] - пары ближ. соседей, [1] - удвоенная ячейка, .back() - весь обр.
-	void dump_Ms_arr();
-	
-	aiw::Sphere<float> f, f_eq;
-
-	int fz_sz = 0;  // размер f1(m_z), если 0 не используется
-	std::vector<float> fz, fz_eq;
-	void dump_fz(const char *path, bool eq) const;
-
-	void clean_av_eq();
-
-	bool out_tm0 = false; // вывод эволюции одного атома
-	bool Hinv = false;    // внешнее поле антиколлинеарно <m>
-	
-	int data_rank, f_rank = -1;
-	bool init(const char *path, const char *spins=nullptr);
 	void open_tvals(const char *path);
 
-	bool parallel = true;
+	int threads = 0;  ///< задает число тредов, если =0 то берется системное знаечние
 	void calc(int steps);
+	double rt_init = 0;   ///< суммарное время инициализации
+	double rt_calc = 0;   ///< суммарное время расчета
+	double rt_diagn = 0;  ///< суммарное время расчета диагностики
 
-	void finish();
+	void finish();  ///< рассчитывает все равновесные значения
 
-	void dump_data(const char *path) const;
-    bool load_data(const char *path);
+	void dump_data(const char *path) const;  ///< сбрасывает состояние (все магнитные моменты) в бинарном формате
+    bool load_data(const char *path);        ///< загружает состояние (все магнитные моменты)  в бинарном формате
 };
 //------------------------------------------------------------------------------
 #endif //LANDAU_LIFSHITZ_HPP

@@ -11,8 +11,8 @@
 #ifdef SC
 const char *mode = "SC";
 #endif
-#ifdef VCC
-const char *mode = "VCC";
+#ifdef BCC
+const char *mode = "BCC";
 #endif
 #ifdef FCC
 const char *mode = "FCC";
@@ -31,6 +31,8 @@ inline double Upsilon(double M, double eta){
 }
 //------------------------------------------------------------------------------
 bool Model::init(const char *path_, const char *spins){
+	double t0 = omp_get_wtime();
+	if(threads!=0) omp_set_num_threads(threads);
 	Nth = omp_get_max_threads();
 	randN01.init(Nth);
 	path = path_; // M0 /= M0.abs();  
@@ -72,9 +74,18 @@ bool Model::init(const char *path_, const char *spins){
 	if(out_tm0){ ftm = File("%tm0.dat", "w", path_); ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0)); }
 	// if(calc_cl) chain_lambda.resize(1<<(data_rank-1));
 
-	Ms_arr.resize(data_rank);  for(int i=0; i<data_rank; i++) Ms_arr[i].init(Ind<3>(1<<(data_rank-i)), Vec<3>(), Vec<3>(double(1<<data_rank)));
-	Ms.resize(data_rank+1);  Ms_eq.resize(data_rank+1, 0.);
+	Ms_arr.resize(data_rank-Ms_start);
+	for(int i=0; i<data_rank-Ms_start; i++) Ms_arr[i].init(Ind<3>(1<<(data_rank-i-Ms_start)), Vec<3>(), Vec<3>(double(1<<data_rank)));
 
+	if(corr_max){
+		corr.resize(corr_max); corr_eq.resize(corr_max); corr_buf.resize(Nth*corr_max);  corr_direct_offs.resize(corr_max*corr_direct_sz*(1<<data_rank*3));
+		for(size_t i=0, sz=corr_direct_offs.size(); i<sz; i++){
+			int d = i%corr_direct_sz, r = i/corr_direct_sz%corr_max, f = i/(corr_direct_sz*corr_max);
+			Ind<3> pos = data[0].offset2pos(f)+corr_direct[d]*r;  for(int k=0; k<3; k++) pos[k] = (pos[k]+(1<<data_rank))%(1<<data_rank);
+			corr_direct_offs[i] = data[0].pos2offset(pos);
+		}
+	}
+	
 #ifdef CALC_Q
 	Q_buf.resize(Nth*Q_sz);  eta_k_buf.resize(Nth*Q_sz*4);
 #endif  // CALC_Q
@@ -82,6 +93,8 @@ bool Model::init(const char *path_, const char *spins){
 #ifdef MAGNONS
 	MG.init(data_rank, T, cL, dt*alpha);
 #endif // MAGNONS
+
+	rt_init += omp_get_wtime()-t0;
 
 	if(spins && !load_data(spins)) return false;	
 	open_tvals(path_);
@@ -108,8 +121,9 @@ void Model::calc(int steps){
 #endif // MAGNONS
 	size_t data_sz = data[0].size();  eta_old = eta[0];
 	for(int Nt=0; Nt<steps; Nt++){
+		double t0 = omp_get_wtime();
 		eta_old = 0;
-#pragma omp parallel for reduction(+:eta_old) if(parallel)
+#pragma omp parallel for reduction(+:eta_old) if(threads!=1)
 		for(size_t i=0; i<data_sz; ++i){
 			ZCubeNb<3> nb = data[0].get_nb(i, 7);
 			for(int k=0; k<cell_sz; k++){
@@ -126,7 +140,7 @@ void Model::calc(int steps){
 		}
 		eta_old /= data_sz*nb_sz*cell_sz;
 		//-----------
-#pragma omp parallel for if(parallel)
+#pragma omp parallel for if(threads!=1)
 		for(size_t i=0; i<data_sz; ++i){
 			ZCubeNb<3> nb = data[0].get_nb(i, 7);
 			for(int k=0; k<cell_sz; k++){
@@ -139,7 +153,7 @@ void Model::calc(int steps){
 			}
 		}
 		//------------
-#pragma omp parallel for if(parallel)
+#pragma omp parallel for if(threads!=1)
 		for(size_t i=0; i<data_sz; ++i){
 			ZCubeNb<3> nb = data[0].get_nb(i, 7);
 			for(int k=0; k<cell_sz; k++){
@@ -162,7 +176,7 @@ void Model::calc(int steps){
 		// MagnonsStochSrcV3 mg(data_rank, mg_split, dt*T*alpha);
 		MagnonsStochField mg = MG();
 #endif // MAGNONS
-#pragma omp parallel for if(parallel)
+#pragma omp parallel for if(threads!=1)
 		for(size_t i=0; i<data_sz; ++i){
 			int thID = omp_get_thread_num();
 			ZCubeNb<3> nb = data[0].get_nb(i, 7);
@@ -189,7 +203,7 @@ void Model::calc(int steps){
 		//---------------
 		/*
 		unsigned int seed = 0;	
-#pragma omp parallel for firstprivate(seed) if(parallel)
+#pragma omp parallel for firstprivate(seed) if(threads!=1)
 		for(size_t i=0; i<data_sz; ++i){
 			rand_init(seed, omp_get_thread_num());
 			ZCubeNb<3> nb = data[0].get_nb(i, 7);
@@ -202,7 +216,7 @@ void Model::calc(int steps){
 			}
 		}
 		*/
-		
+		rt_calc += omp_get_wtime() - t0;
 		t += dt; if(out_tm0) ftm("% % %\n", t, data[0][0].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 		if(calc_eq || Nt==steps-1) calc_av();
 	}
@@ -212,6 +226,7 @@ void Model::calc(int steps){
 }
 //------------------------------------------------------------------------------
 void Model::calc_av(){  // считаем средние значения
+	double t0 = omp_get_wtime();
 	size_t data_sz = data[0].size(); 
 	double Mx = 0, My = 0, Mz = 0, M2x = 0, M2y = 0, M2z = 0, We = 0, Wa = 0, eta1 = 0, eta2 = 0, eta3 = 0, eta4 = 0,
 		phi_x = 0, phi_y = 0, phi_z = 0, th_x = 0, th_y = 0, th_z = 0,
@@ -222,9 +237,10 @@ void Model::calc_av(){  // считаем средние значения
 	float _dz = fz_sz? 2./fz_sz: 0;
 
 	for(double &x: Q_buf) x = 0; 
-	for(double &x: eta_k_buf) x = 0; 
+	for(double &x: eta_k_buf) x = 0;
+	for(Vec<4> &x: corr_buf) x = vec(0.);
 	
-#pragma omp parallel for reduction(+:Mx,My,Mz,M2x,M2y,M2z,We,Wa,eta1,eta2,eta3,eta4,phi_x,phi_y,phi_z,th_x,th_y,th_z,xi_xx,xi_yy,xi_zz,xi_xy,xi_xz,xi_yz,psi,UMx,UMy,UMz) if(parallel)
+#pragma omp parallel for reduction(+:Mx,My,Mz,M2x,M2y,M2z,We,Wa,eta1,eta2,eta3,eta4,phi_x,phi_y,phi_z,th_x,th_y,th_z,xi_xx,xi_yy,xi_zz,xi_xy,xi_xz,xi_yz,psi,UMx,UMy,UMz) if(threads!=1)
 	for(size_t cID=0; cID<data_sz; cID++){  // начало цикла по ячейкам
 		int thID = omp_get_thread_num();
 		ZCubeNb<3> nb = data[0].get_nb(cID, 7);
@@ -249,6 +265,10 @@ void Model::calc_av(){  // считаем средние значения
 			if(f_rank>=0) f_buf[thID*f.size()+f.find(m0)]++;
 			if(fz_sz){ int fid = floor(m0[2]*_dz); fz_buf[thID*fz_sz+(fid<0 ? 0 : (fid>=fz_sz ? fz_sz-1 : fid))]++; }
 
+			for(int l=0; l<corr_max; l++) for(int d=0; d<corr_direct_sz; d++){  // расчет коорреляционной функции
+					float e = m0*data[0][corr_direct_offs[(cID*corr_max + l)*corr_direct_sz + d]].m[k];
+					Vec<4> &dste = corr_buf[thID*corr_max+l];  dste[0] += e; float ee = e; for(int i=1; i<4; i++){ ee *= e; dste[e] += ee; }
+				} 
 #ifdef CALC_Q
 			Vecf<3> mj_buf[nb_sz]; int j = 0;  // массив магнитных моментов соседей
 #endif  // CALC_Q
@@ -274,7 +294,6 @@ void Model::calc_av(){  // считаем средние значения
 #endif  // CALC_Q
 			//------- конец расчета Q ----------------- 
 		}  // конец цикла внутри ячейки
-		ms /= cell_sz; Ms[1] += ms.abs();
 	} // конец цикла по ячейкам
 
 	M  = vec(Mx, My, Mz)/(data_sz*cell_sz);
@@ -288,7 +307,9 @@ void Model::calc_av(){  // считаем средние значения
 	
 	Psi = psi/(data_sz*cell_sz*nb_sz);
 	UpsilonM = -vec(UMx, UMy, UMz)/(2*data_sz*cell_sz*nb_sz); 
-	Ms[1] /= data_sz; 
+
+	for(Vec<4> &x: corr) x = vec(0.);
+	for(int i=0, sz=corr_buf.size(); i<sz; i++) corr[i%corr_max] += corr_buf[i]/(Nth*data_sz*cell_sz*corr_direct_sz);
 	
 #ifdef CALC_Q
 	Q = eta_k2 = eta_k3 = eta_k4 = vec(0.);
@@ -304,23 +325,21 @@ void Model::calc_av(){  // считаем средние значения
 #endif // CALC_Q
 
 	for(int R=1; R<data_rank; R++){
-		Mesh<Vecf<3>, 3> &src = Ms_arr[R-1], &dst = Ms_arr[R]; dst.fill(Vecf<3>()); Ms[R+1] = 0;
+		Mesh<Vecf<3>, 3> &src = Ms_arr[R-1], &dst = Ms_arr[R]; dst.fill(Vecf<3>()); 
 		for(const Ind<3>& pos: irange(src.bbox())) dst[pos/2] += src[pos];
-		for(const Ind<3>& pos: irange(dst.bbox())){ Vecf<3> &ms = dst[pos]; ms *= .125f; Ms[R+1] += ms.abs(); }
-		Ms[R+1] /= dst.size();
 	}
 	dot_eta = (eta[0]-eta_old)/dt;
 #ifdef CALC_Q
 	// T_sc_old = T_sc;
-	// if(patchT) T_sc = 2*(-dot_eta/(4*alpha) + Hext*UpsilonM - K*Psi  - .5*J*(eta[1]-1+Qcoeff*Q))/(eta[0]+eta_old); 	
-	T_sc =  (1-T_sc_weight)*T_sc + T_sc_weight*std::max(0., 2*T - (-dot_eta/(4*alpha) + Hext*UpsilonM - K*Psi  - .5*J*(eta[1]-1+Qcoeff*Q))/eta[0]);
+	// if(patchT) T_sc = 2*(-dot_eta/(4*alpha) + Hext*UpsilonM + K*Psi  - .5*J*(eta[1]-1+Qcoeff*Q))/(eta[0]+eta_old); 	
+	T_sc =  (1-T_sc_weight)*T_sc + T_sc_weight*std::max(0., 2*T - (-dot_eta/(4*alpha) + Hext*UpsilonM + K*Psi  - .5*J*(eta[1]-1+Qcoeff*Q))/eta[0]);
 #endif //CALC_Q
 	if(calc_eq){ 
 		Meq += M; Mabs_eq += M.abs(); M2eq += M2; Weq += W; Qeq += Q; eta_eq += eta;
 		PHIeq += PHI; THETAeq += THETA; XIeq += XI; Psi_eq += Psi; UpsilonMeq += UpsilonM;
 		eta_k2_eq += eta_k2;  eta_k3_eq += eta_k3;  eta_k4_eq += eta_k4;
-
-		for(int i=0, sz=Ms.size(); i<sz; i++) Ms_eq[i] += Ms[i];
+		for(int i=0; i<corr_max; i++) corr_eq[i] += corr[i];
+		
 		Tsc_eq += T_sc;
 	}
 
@@ -335,6 +354,7 @@ void Model::calc_av(){  // считаем средние значения
 		if(calc_eq) for(int i=0; i<fz_sz; i++) fz_eq[i] += fz[i];
 	}
 	if(calc_eq) eq_count++;
+	rt_diagn += omp_get_wtime() - t0;
 }
 //------------------------------------------------------------------------------
 void Model::clean_av_eq(){
@@ -343,7 +363,6 @@ void Model::clean_av_eq(){
 	PHIeq = vec(0.); THETAeq = vec(0.); XIeq = vec(0.); Psi_eq = 0; UpsilonMeq = Vec<3>();
 	// UpsHextMeq = 0; Seq = 0;  HextMMMeq = 0;
 
-	for(double &x: Ms_eq) x = 0;
 	if(f_rank>=0) f_eq.fill(0.f);
 	for(float &v: fz_eq) v = 0;
 	Tsc_eq = 0;
@@ -367,9 +386,9 @@ void Model::finish(){
 		UpsilonMeq /= eq_count;
 		Tsc_eq /= eq_count;
 		
-		for(double &x: Ms_eq) x /= eq_count;
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] /= eq_count;
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] /= eq_count;
+		for(int i=0; i<corr_max; i++) corr_eq[i] /= eq_count;
 	} else {
 		Weq = W;
 		Meq = M;
@@ -389,9 +408,10 @@ void Model::finish(){
 		UpsilonMeq = UpsilonM;
 		Tsc_eq = T_sc;
 
-		Ms_eq = Ms;
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] = f[i];
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] = fz[i];
+
+		corr_eq = corr;
 	}
 }
 //------------------------------------------------------------------------------
@@ -417,71 +437,4 @@ bool Model::load_data(const char *path){
 	calc_av();
 	return true;
 }
-//------------------------------------------------------------------------------
-// void Model::dump(aiw::IOstream &S);
-// void Model::load(aiw::IOstream &S);
-//------------------------------------------------------------------------------
-/*
-void Model::calc_av(){  // считаем средние значения W, M, M2
-	size_t sz = data[0].size();
-	double Mx = 0, My = 0, Mz = 0, M2x = 0, M2y = 0, M2z = 0, Wx = 0, We = 0, Wa = 0, C20 = 0, C21 = 0, C22 = 0, Q20 = 0, Q21 = 0, Q22 = 0, eta1 = 0, eta2 = 0, eta3 = 0, eta4 = 0; 
-#pragma omp parallel for reduction(+:Mx,My,Mz,M2x,M2y,M2z,Wx,We,Wa,C20,C21,C22,Q20,Q21,Q22,eta1,eta2,eta3,eta4) if(parallel)
-	for(size_t i=0; i<sz; ++i){
-		ZCubeNb<3> nb = data[0].get_nb(i, 7);
-		for(int k=0; k<cell_sz; k++){
-			const Vecf<3> &m0 = data[0][i].m[k];
-			Mx += m0[0];        My += m0[1];        Mz += m0[2];
-			M2x += m0[0]*m0[0]; M2y += m0[1]*m0[1]; M2z += m0[2]*m0[2];
-			float e = Hexch(0, i, nb, k)*m0;  Wx -= e*.5f;  e /= nb_sz;
-			eta1 += e;  eta2 += e*e;  eta3 += e*e*e;  eta4 += e*e*e*e;
-			We -= Hext*m0;
-			float nKm = nK*m0; Wa -= K*nKm*nKm;
-
-			Vecf<corr2_types> C2, Q2;
-			for(int ci=0; ci<corr2_types; ci++)
-				for(int j=0; j<corr2_sz[ci]; j++){
-					const Ind<2> &link = corr2_table[ci*cell_sz+k][j];
-					const Link &l0 = nb_pos[k][link[0]], &l1 = nb_pos[k][link[1]];
-					const auto &mi = data[0][i+nb[l0.off]].m[l0.cell], &mk = data[0][i+nb[l1.off]].m[l1.cell];
-					C2[ci] += mi*mk;
-					Q2[ci] += mi*(m0%(m0%mk));
-				}
-			C20 += C2[0]; C21 += C2[1]; Q20 += Q2[0]; Q21 += Q2[1];
-			if(corr2_types>=3){ C22 += C2[2]; Q22 += Q2[2]; }
-		}
-	}
-
-	M  = vec(Mx, My, Mz)/(sz*cell_sz);
-	M2 = vec(M2x, M2y, M2z)/(sz*cell_sz);
-	W  = vec(Wx+We+Wa, Wx, We, Wa)/(sz*cell_sz);
-	corr2[0] = C20/(sz*cell_sz*corr2_sz[0]);
-	corr2[1] = C21/(sz*cell_sz*corr2_sz[1]);
-	if(corr2_types>=3) corr2[2] = C22/(sz*cell_sz*corr2_sz[2]);
-	Q[0] = Q20/(sz*cell_sz*corr2_sz[0]);
-	Q[1] = Q21/(sz*cell_sz*corr2_sz[1]);
-	if(corr2_types>=3) Q[2] = Q22/(sz*cell_sz*corr2_sz[2]);
-	eta = vecf(eta1, eta2, eta3, eta4)/(sz*cell_sz);	
-}
-*/
-//------------------------------------------------------------------------------
-/*
-void Model::calc_chain_lambda(){
-	int thN = omp_get_max_threads();
-	// printf("thN=%i\n", thN);
-	std::vector<Vec<4> > tmp_cl[thN]; for(int i=0; i<thN; i++) tmp_cl[i].resize(chain_lambda.size());
-	size_t sz = data[0].size(); int  zsz =  1<<data_rank, hsz = zsz/2;
-#pragma omp parallel for if(parallel)
-	for(size_t i=0; i<sz; i++){ // цикл по XYZ
-		// printf("thN=%i th=%i\n", thN, omp_get_thread_num());
-		std::vector<Vec<4> > &cl = tmp_cl[omp_get_thread_num()];
-		const Vecf<3> &mi = data[0][i].m[0]; Ind<3> pos = data[0].offset2pos(i); int z0 = pos[2];
-		for(int j=0; j<hsz; j++){
-			pos[2] = (z0+j+1)%zsz; float eta = mi*data[0][data[0].pos2offset(pos)].m[0], eta_k = eta;
-			for(int k=0; k<4; k++){ cl[j][k] += eta_k; eta_k *= eta; } 
-		} 
-	} // конец цикла по XYZ
-	double div_ = 1./(1<<3*data_rank);
-	for(int i=0; i<thN; i++) for(int j=0, sz=chain_lambda.size(); j<sz; j++) chain_lambda[j] += div_*tmp_cl[i][j];
-}
-*/
 //------------------------------------------------------------------------------
