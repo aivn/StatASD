@@ -57,7 +57,7 @@ void Model::init(const char *path_){
 		}
 	}
 
-	rand_init();
+	// rand_init();
 	
 #ifdef CALC_Q
 	Q_buf.resize(Nth*Q_sz);  eta_k_buf.resize(Nth*Q_sz*4);
@@ -77,13 +77,10 @@ void Model::start_gauss(){
 		M0 /= M0abs;
 		for(int i=0, sz=data[0].size(); i<sz; i++) data[0][i].init(M0);
 	} else {
-		Vecf<3> p; if(M0abs>1e-3f) p = LLBE::invL(M0abs)/M0abs*M0;  
-		Sphere<double> ff(5, 1); for(int i=0, sz=ff.size(); i<sz; i++) ff[i] = expf(ff.center(i)*p);
-		std::map<float, int> ftable; float s = 0; for(int i=0, sz=ff.size(); i<sz; i++){ s += ff[i]; ftable[s] = i; }
+		Vecf<3> p; if(M0abs>1e-3f) p = LLBE::invL(M0abs)/M0abs*M0;
+		std::map<float, int> ftable; float s = 0; for(int i=0, sz=sph_vertex_num(5); i<sz; i++){ s += expf(sph_vert(i, 5)*p); ftable[s] = i; }
 		std::random_device rd; std::mt19937 gen;  gen.seed(rd());  std::uniform_real_distribution<float>  rnd(0, s);
-		for(size_t i=0; i<data[0].size(); i++) for(int k=0; k<cell_sz; k++){
-				data[0][i].m[k] = ff.center(ftable.lower_bound(rnd(gen))->second);
-			}
+		for(size_t i=0; i<data[0].size(); i++) for(int k=0; k<cell_sz; k++) data[0][i].m[k] = sph_vert(ftable.lower_bound(rnd(gen))->second, 5);
 	}
 	rt_init += omp_get_wtime()-t0;
 	init_conditions = true;  // флаг задания н.у.
