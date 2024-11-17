@@ -43,15 +43,15 @@ void Model::init(const char *path_){
 	if(fz_sz){ fz.resize(fz_sz); fz_eq.resize(fz_sz, 0.f); fz_buf.resize(Nth*fz_sz); }
 
 	t = 0.;   T_sc = T; Tsc_eq = 0;
-	// if(calc_cl) chain_lambda.resize(1<<(data_rank-1));
 
 	Ms_arr.resize(data_rank-Ms_start);
 	for(int i=0; i<data_rank-Ms_start; i++) Ms_arr[i].init(Ind<3>(1<<(data_rank-i-Ms_start)), Vec<3>(), Vec<3>(double(1<<data_rank)));
 
 	if(corr_max){
+		if(corr_max<0) corr_max = 1<<(data_rank-1);  
 		corr.resize(corr_max); corr_eq.resize(corr_max); corr_buf.resize(Nth*corr_max);  corr_direct_offs.resize(corr_max*corr_direct_sz*(1<<data_rank*3));
-		for(size_t i=0, sz=corr_direct_offs.size(); i<sz; i++){
-			int d = i%corr_direct_sz, r = i/corr_direct_sz%corr_max, f = i/(corr_direct_sz*corr_max);
+		for(size_t i=0, sz=corr_direct_offs.size(); i<sz; i++){  // usage:   corr_direct_offs[(cID*corr_max + l)*corr_direct_sz + d]
+			int d = i%corr_direct_sz, r = 1+i/corr_direct_sz%corr_max, f = i/(corr_direct_sz*corr_max);
 			Ind<3> pos = data[0].offset2pos(f)+corr_direct[d]*r;  for(int k=0; k<3; k++) pos[k] = (pos[k]+(1<<data_rank))%(1<<data_rank);
 			corr_direct_offs[i] = data[0].pos2offset(pos);
 		}
@@ -279,9 +279,9 @@ void Model::calc_av(){  // считаем средние значения
 			if(f_rank>=0) f_buf[thID*f.size()+f.find(m0)]++;
 			if(fz_sz){ int fid = floor(m0[2]*_dz); fz_buf[thID*fz_sz+(fid<0 ? 0 : (fid>=fz_sz ? fz_sz-1 : fid))]++; }
 
-			for(int l=0; l<corr_max; l++) for(int d=0; d<corr_direct_sz; d++){  // расчет коорреляционной функции
+			for(int l=0; l<corr_max; l++) for(int d=0; d<corr_direct_sz; d++){  // расчет корреляционной функции
 					float e = m0*data[0][corr_direct_offs[(cID*corr_max + l)*corr_direct_sz + d]].m[k];
-					Vec<4> &dste = corr_buf[thID*corr_max+l];  dste[0] += e; float ee = e; for(int i=1; i<4; i++){ ee *= e; dste[e] += ee; }
+					Vec<4> &dste = corr_buf[thID*corr_max+l];  dste[0] += e; float ee = e; for(int i=1; i<4; i++){ ee *= e; dste[i] += ee; }
 				} 
 #ifdef CALC_Q
 			Vecf<3> mj_buf[nb_sz]; int j = 0;  // массив магнитных моментов соседей
@@ -323,7 +323,7 @@ void Model::calc_av(){  // считаем средние значения
 	UpsilonM = -vec(UMx, UMy, UMz)/(2*data_sz*cell_sz*nb_sz); 
 
 	for(Vec<4> &x: corr) x = vec(0.);
-	for(int i=0, sz=corr_buf.size(); i<sz; i++) corr[i%corr_max] += corr_buf[i]/(Nth*data_sz*cell_sz*corr_direct_sz);
+	for(int i=0, sz=corr_buf.size(); i<sz; i++) corr[i%corr_max] += corr_buf[i]/(data_sz*cell_sz*corr_direct_sz);
 	
 #ifdef CALC_Q
 	Q = eta_k2 = eta_k3 = eta_k4 = vec(0.);
@@ -426,6 +426,10 @@ void Model::finish(){
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] = fz[i];
 
 		corr_eq = corr;
+	}
+	if(corr_max){
+		File  fcorr_eq("%corr_eq.dat", "w", path); fcorr_eq("#:k eta eta2 eta3 eta4\n1 %\n", eta_eq);
+		for(int k=0; k<corr_max; k++) fcorr_eq("% %\n", k+2, corr_eq[k]);		
 	}
 }
 //------------------------------------------------------------------------------
