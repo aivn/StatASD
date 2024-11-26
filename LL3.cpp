@@ -4,6 +4,7 @@
 #include <omp.h>
 #include <aiwlib/llbe>
 #include "LL3.hpp"
+// #include "Z2.hpp"
 
 #ifdef MAGNONS
 #include "magnons.hpp"
@@ -108,7 +109,7 @@ void Model::open_tvals(){
 	}
 	ftvals.close(); ftvals = File("%tvals.dat", "w", path);
 	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz"
-		   "  eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc\n");
+		   "  eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc T\n");
 	if(corr_max){
 		corr_fout.close(); corr_fout = File("%corr.dat", "w", path);
 		corr_fout.printf("#:t  eta1 eta1_2 eta1_3 eta1_4"); for(int i=0; i<corr_max; i++) corr_fout("    eta% eta%_2 eta%_3 eta%_4", i+2, i+2, i+2, i+2);
@@ -118,8 +119,8 @@ void Model::open_tvals(){
 }
 void Model::drop_tvals(){
 	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
-	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %   %  %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]), UpsilonM.abs(), zeta, dot_eta, T_sc).flush();
+	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %   %  %  %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]), UpsilonM.abs(), zeta, dot_eta, T_sc, T).flush();
 	if(corr_max){
 		corr_fout("%  %", t, eta);  for(int i=0; i<corr_max; i++) corr_fout("    %", corr[i]);
 		corr_fout.printf("\n");  corr_fout.flush();
@@ -336,6 +337,7 @@ void Model::calc_av(){  // считаем средние значения
 #endif // FCC
 		(qt==0? eta_k2: (qt==1? eta_k3: eta_k4))[i%4] += eta_k_buf[i]/(data_sz*cell_sz*Qtable_sz[0][qtt]);
 	}
+	// Z2 z2; Z2.calc(M.abs(), eta);
 #endif // CALC_Q
 
 	for(int R=1; R<data_rank; R++){
@@ -355,6 +357,7 @@ void Model::calc_av(){  // считаем средние значения
 		for(int i=0; i<corr_max; i++) corr_eq[i] += corr[i];
 		
 		Tsc_eq += T_sc;
+		// Seq += S;
 	}
 
 	if(f_rank>=0){
@@ -375,11 +378,11 @@ void Model::clean_av_eq(){
 	eq_count = 0; Meq = vec(0.); Mabs_eq = 0.; M2eq = vec(0.); Weq = vec(0.); Qeq = vec(0.);
 	eta_eq = vec(0.); eta_k2_eq = vec(0.); eta_k3_eq = vec(0.); eta_k4_eq = vec(0.);
 	PHIeq = vec(0.); THETAeq = vec(0.); XIeq = vec(0.); Psi_eq = 0; UpsilonMeq = Vec<3>();
-	// UpsHextMeq = 0; Seq = 0;  HextMMMeq = 0;
+	// UpsHextMeq = 0;   HextMMMeq = 0;
 
 	if(f_rank>=0) f_eq.fill(0.f);
 	for(float &v: fz_eq) v = 0;
-	Tsc_eq = 0;
+	Tsc_eq = 0; // Seq = 0;
 }
 //------------------------------------------------------------------------------
 void Model::finish(){
@@ -399,6 +402,7 @@ void Model::finish(){
 		Psi_eq /= eq_count;
 		UpsilonMeq /= eq_count;
 		Tsc_eq /= eq_count;
+		// Seq /= eq_count;
 		
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] /= eq_count;
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] /= eq_count;
@@ -417,10 +421,10 @@ void Model::finish(){
 		PHIeq = PHI;
 		THETAeq = THETA;
 		XIeq = XI;
-		// Seq = S;
 		Psi_eq = Psi;
 		UpsilonMeq = UpsilonM;
 		Tsc_eq = T_sc;
+		// Seq = S;
 
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] = f[i];
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] = fz[i];

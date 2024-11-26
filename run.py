@@ -11,6 +11,7 @@ from aiwlib.racs import *
 calc = Calc(t_relax=(50., '#время релаксации'), t_eq=(10., '#время накопления равновесной статистики'),
             steps=(10, '#число шагов между сбросом данных'), _repo='repo', Hz=(0., '#внешнее поле (для задания из командной строки)'),
             M0z=(1., '#начальная намагниченность (для задания из командной строки)'), mode=cvar.mode)
+calc.tags.add(cvar.mode)
 
 model = calc.wrap(Model(), '', lambda: model.t/calc.t_max)
 model.M0[2] = calc.M0z
