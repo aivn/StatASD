@@ -38,7 +38,7 @@ void Model::init(const char *path_){
 	Nth = omp_get_max_threads();
 	randN01.init(Nth);
 	path = path_; // M0 /= M0.abs();  
- 
+
 	sph_init_table(ind(5, f_rank).max());
 	if(f_rank>=0){ f.init(f_rank, 0, 1); f_eq.init(f_rank, 0, 1); f_eq.fill(0.f); f_buf.resize(Nth*f.size()); }
 	if(fz_sz){ fz.resize(fz_sz); fz_eq.resize(fz_sz, 0.f); fz_buf.resize(Nth*fz_sz); }
@@ -49,8 +49,8 @@ void Model::init(const char *path_){
 	for(int i=0; i<data_rank-Ms_start; i++) Ms_arr[i].init(Ind<3>(1<<(data_rank-i-Ms_start)), Vec<3>(), Vec<3>(double(1<<data_rank)));
 
 	if(corr_max){
-		if(corr_max<0) corr_max = 1<<(data_rank-1);  
-		corr.resize(corr_max); corr_eq.resize(corr_max); corr_buf.resize(Nth*corr_max);  corr_direct_offs.resize(corr_max*corr_direct_sz*(1<<data_rank*3));
+		if(corr_max<0) corr_max = 1<<(data_rank-1);
+		corr.resize(corr_max); corr_eq.resize(corr_max); corr_buf.resize(Nth*corr_max);  corr_direct_offs.resize(size_t(corr_max)*corr_direct_sz*(1<<data_rank*3));
 		for(size_t i=0, sz=corr_direct_offs.size(); i<sz; i++){  // usage:   corr_direct_offs[(cID*corr_max + l)*corr_direct_sz + d]
 			int d = i%corr_direct_sz, r = 1+i/corr_direct_sz%corr_max, f = i/(corr_direct_sz*corr_max);
 			Ind<3> pos = data[0].offset2pos(f)+corr_direct[d]*r;  for(int k=0; k<3; k++) pos[k] = (pos[k]+(1<<data_rank))%(1<<data_rank);
@@ -59,7 +59,6 @@ void Model::init(const char *path_){
 	}
 
 	// rand_init();
-	
 #ifdef CALC_Q
 	Q_buf.resize(Nth*Q_sz);  eta_k_buf.resize(Nth*Q_sz*4);
 #endif  // CALC_Q
