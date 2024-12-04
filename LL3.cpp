@@ -108,7 +108,7 @@ void Model::open_tvals(){
 	}
 	ftvals.close(); ftvals = File("%tvals.dat", "w", path);
 	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz"
-		   "  eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc T\n");
+		   "  eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc Hz T\n");
 	if(corr_max){
 		corr_fout.close(); corr_fout = File("%corr.dat", "w", path);
 		corr_fout.printf("#:t  eta1 eta1_2 eta1_3 eta1_4"); for(int i=0; i<corr_max; i++) corr_fout("    eta% eta%_2 eta%_3 eta%_4", i+2, i+2, i+2, i+2);
@@ -118,8 +118,8 @@ void Model::open_tvals(){
 }
 void Model::drop_tvals(){
 	double mm = M*M, zeta = mm<1? (eta[0]-M*M)/(1-M*M): 0;
-	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %   %  %  %\n",
-		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]), UpsilonM.abs(), zeta, dot_eta, T_sc, T).flush();
+	ftvals("% %        %  %   %  %  %    %    %      %   %       %       %       %    %   %  %   %  %  % %\n",
+		   t, M.abs(), M, M2, W, Q, eta, PHI, THETA, XI, eta_k2, eta_k3, eta_k4, Psi, Upsilon(M.abs(), eta[0]), UpsilonM.abs(), zeta, dot_eta, T_sc, Hext[2], T).flush();
 	if(corr_max){
 		corr_fout("%  %", t, eta);  for(int i=0; i<corr_max; i++) corr_fout("    %", corr[i]);
 		corr_fout.printf("\n");  corr_fout.flush();
