@@ -135,7 +135,7 @@ void Model::calc(int steps){
 	// float sghT = sqrt(2*dt*alpha*(patchT && !calc_eq? T_sc: T)); // v4,5 2*sqrt(dt*alpha*T);
 	float sghT = sqrt(2*dt*alpha*(patchT ? T_sc: T)); // v4,5 2*sqrt(dt*alpha*T);
 #endif // MAGNONS
-	size_t data_sz = data[0].size();  eta_old = eta[0];
+	size_t data_sz = data[0].size();  eta_old = eta[0];  float Kx2 = 2*K;
 	for(int Nt=0; Nt<steps; Nt++){
 		double t0 = omp_get_wtime();
 		eta_old = 0;
@@ -147,7 +147,7 @@ void Model::calc(int steps){
 				Vecf<3> Hex = Hexch(0, i, nb, k);
 				eta_old += Hex*m0;
 				// WOUT(i, k, Hex); 
-				Vecf<3> H = Hex + Hext + 2*K*nK*m0*nK; 
+				Vecf<3> H = Hex + Hext + nK*m0*Kx2*nK; 
 				Vecf<3> dmdt = m0%(-gamma*H -alpha*m0%H);
 				m1 = m0 + .5f*dt*dmdt;
 				dm = .5f*dmdt;
@@ -162,7 +162,7 @@ void Model::calc(int steps){
 			for(int k=0; k<cell_sz; k++){
 				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &m2 = data[2][i].m[k], &dm = data[3][i].m[k];
 				Vecf<3> Hex = Hexch(1, i, nb, k);
-				Vecf<3> H = Hex + Hext + 2*K*nK*m1*nK; 
+				Vecf<3> H = Hex + Hext + nK*m1*Kx2*nK; 
 				Vecf<3> dmdt = m1%(-gamma*H -alpha*m1%H);
 				m2 = m0 + .5f*dt*dmdt;
 				dm += dmdt;
@@ -175,7 +175,7 @@ void Model::calc(int steps){
 			for(int k=0; k<cell_sz; k++){
 				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &m2 = data[2][i].m[k], &dm = data[3][i].m[k];
 				Vecf<3> Hex = Hexch(2, i, nb, k);
-				Vecf<3> H = Hex + Hext + 2*K*nK*m2*nK; 
+				Vecf<3> H = Hex + Hext + nK*m2*Kx2*nK; 
 				Vecf<3> dmdt = m2%(-gamma*H -alpha*m2%H);
 				m1 = m0 + dt*dmdt;
 				dm += dmdt;
@@ -199,7 +199,7 @@ void Model::calc(int steps){
 			for(int k=0; k<cell_sz; k++){
 				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &dm = data[3][i].m[k];
 				Vecf<3> Hex = Hexch(1, i, nb, k);
-				Vecf<3> H = Hex + Hext + 2*K*nK*m1*nK; 
+				Vecf<3> H = Hex + Hext + nK*m1*Kx2*nK; 
 				Vecf<3> dmdt = m1%(-gamma*H -alpha*m1%H);
 				m0 += dt*_3*(dm + .5*dmdt);
 				// m0 = gauss_rotate(m0/m0.abs(), sghT, seed); // old variant, errro
