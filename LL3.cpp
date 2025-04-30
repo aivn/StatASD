@@ -45,9 +45,11 @@ void Model::init(const char *path_){
 
 	t = 0.;   T_sc = T; Tsc_eq = 0;
 
-	Ms_arr.resize(data_rank-Ms_start);
-	for(int i=0; i<data_rank-Ms_start; i++) Ms_arr[i].init(Ind<3>(1<<(data_rank-i-Ms_start)), Vec<3>(), Vec<3>(double(1<<data_rank)));
-
+	if(Ms_start>=0 && Ms_start<data_rank){
+		Ms_arr.resize(data_rank-1);
+		for(int i=0; i<data_rank-1; i++) Ms_arr[i].init(Ind<3>(1<<(data_rank-i)), Vec<3>(), Vec<3>(double(1<<data_rank)));
+	} else { Ms_arr.resize(1); Ms_arr[0].init(Ind<3>(1)); }
+	
 	if(corr_max){
 		if(corr_max<0) corr_max = 1<<(data_rank-1);
 		corr.resize(corr_max); corr_eq.resize(corr_max); corr_buf.resize(Nth*corr_max);  corr_direct_offs.resize(size_t(corr_max)*corr_direct_sz*(1<<data_rank*3));
@@ -253,14 +255,16 @@ void Model::calc_av(){  // считаем средние значения
 	for(double &x: Q_buf) x = 0; 
 	for(double &x: eta_k_buf) x = 0;
 	for(Vec<4> &x: corr_buf) x = vec(0.);
+
+	bool calc_Ms = Ms_start>=0 && Ms_start<data_rank;
 	
 #pragma omp parallel for reduction(+:Mx,My,Mz,M2x,M2y,M2z,We,Wa,eta1,eta2,eta3,eta4,phi_x,phi_y,phi_z,th_x,th_y,th_z,xi_xx,xi_yy,xi_zz,xi_xy,xi_xz,xi_yz,psi,UMx,UMy,UMz) if(threads!=1)
 	for(size_t cID=0; cID<data_sz; cID++){  // начало цикла по ячейкам
 		int thID = omp_get_thread_num();
 		ZCubeNb<3> nb = data[0].get_nb(cID, 7);
-		Vecf<3> &ms = Ms_arr[0][data[0].offset2pos(cID)]; ms = Vecf<1>();
+		Vecf<3> &ms = Ms_arr[0][data[0].offset2pos(cID)]; if(calc_Ms) ms = Vecf<1>();
 		for(int k=0; k<cell_sz; k++){  // начало цикла внутри ячейки
-			const Vecf<3> &m0 = data[0][cID].m[k]; ms += m0;
+			const Vecf<3> &m0 = data[0][cID].m[k]; if(calc_Ms) ms += m0;
 			Mx += m0[0];        My += m0[1];        Mz += m0[2];
 			M2x += m0[0]*m0[0]; M2y += m0[1]*m0[1]; M2z += m0[2]*m0[2];
 			We -= Hext*m0;
@@ -339,10 +343,10 @@ void Model::calc_av(){  // считаем средние значения
 	// Z2 z2; Z2.calc(M.abs(), eta);
 #endif // CALC_Q
 
-	for(int R=1; R<data_rank; R++){
-		Mesh<Vecf<3>, 3> &src = Ms_arr[R-1], &dst = Ms_arr[R]; dst.fill(Vecf<3>()); 
-		for(const Ind<3>& pos: irange(src.bbox())) dst[pos/2] += src[pos];
-	}
+	if(calc_Ms)	for(int R=1; R<data_rank; R++){
+			Mesh<Vecf<3>, 3> &src = Ms_arr[R-1], &dst = Ms_arr[R]; dst.fill(Vecf<3>()); 
+			for(const Ind<3>& pos: irange(src.bbox())) dst[pos/2] += src[pos];
+		}
 	dot_eta = (eta[0]-eta_old)/dt;
 #ifdef CALC_Q
 	// T_sc_old = T_sc;
@@ -441,7 +445,8 @@ void Model::dump_fz(const char *path, bool eq) const {
 	for(int i=0; i<fz_sz; i++) fout<<(i+.5)*2/fz_sz<<' '<<(eq? fz_eq: fz)[i]<<'\n';
 }
 void Model::dump_Ms_arr(){
-	if(!fMs.size()){ fMs.resize(Ms_arr.size()-Ms_start); for(int i=Ms_start, sz=Ms_arr.size(); i<sz; i++) fMs[i].open("%/Ms%.msh", "w", path, i+1); }
+	if(Ms_start<0 || Ms_start>=data_rank) return;
+	if(!fMs.size()){ fMs.resize(Ms_arr.size()-Ms_start); for(int i=Ms_start, sz=Ms_arr.size(); i<sz; i++) fMs[i].open("%/Ms%.msh", "w", path, i); }
 	for(int i=Ms_start, sz=Ms_arr.size(); i<sz; i++) Ms_arr[i].dump(fMs[i]);
 }
 //------------------------------------------------------------------------------
