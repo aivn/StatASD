@@ -23,6 +23,17 @@ const char *mode = "FCC";
 const double _3 = 1./3, _6 = 1./6;
 
 inline double pow2(double x){ return x*x; }
+float calc_Mu(float M){
+	float M2 = M*M, tmp = 0.775383f + (0.109185f + (0.289114f + (-0.871214f + (1.85968f + (-1.71306f + 0.550912f*M2 )*M2 )*M2 )*M2 )*M2 )*M2;
+	return (1-M2*tmp*tmp)/3.;
+}
+inline float Upsilon(float M, float eta){
+	if(fabs(M)>.9999999f) return 0;
+	float M2 = M*M, zeta = (eta-M2)/(1-M2), zeta2 = zeta*zeta, Mz3 = M+zeta; Mz3 *= Mz3*Mz3;
+	float delta = 0.1223f*Mz3*Mz3*(1.f-1.6f*M-2.49f*zeta+0.71f*M2+1.71f*zeta2+2.47f*M*zeta-0.12f*M2*M-0.21f*zeta2*zeta-0.34f*M2*zeta-1.17f*M*zeta2);
+	return 3*calc_Mu(M)*calc_Mu(zeta)/(1+zeta)*(1+delta);
+}
+/*
 inline double Upsilon(double M, double eta){
 	M = fabs(M); double M2 = M*M, zeta = M2<1? (eta-M2)/(1-M2): 0, zeta2 = zeta*zeta;
 	double mu_p = (1-pow2( M*( 0.775383 + (0.109185 + (0.289114 + (-0.871214 + (1.85968 + (-1.71306 + 0.550912*M2 )*M2 )*M2 )*M2 )*M2 )*M2 ) ))/3.;
@@ -31,6 +42,7 @@ inline double Upsilon(double M, double eta){
 		 + 7.65054*zeta2 - 14.5937*M2*zeta - 5.35767*M*zeta2 
 		 - 13.542*M2*M - 3.72091*zeta2*zeta);
 }
+*/
 //------------------------------------------------------------------------------
 void Model::init(const char *path_){
 	double t0 = omp_get_wtime();
@@ -74,6 +86,7 @@ void Model::init(const char *path_){
 void Model::start_gauss(){
 	double t0 = omp_get_wtime();
 	for(int k=0; k<4; k++) data[k].init(data_rank);
+	Natoms = data[0].size()*cell_sz;
 	float M0abs = M0.abs();
 	if(M0abs>=.99){
 		M0 /= M0abs;
@@ -93,6 +106,7 @@ void Model::start_helic(){
 	float M0abs = M0.abs(); if(M0abs>=1 || M0abs<1e-3){  start_gauss();  return; }
 	Vecf<3> n = M0/M0abs, m0 = M0 + perp(n)*sqrtf(1-M0*M0);
 	for(int k=0; k<4; k++) data[k].init(data_rank);
+	Natoms = data[0].size()*cell_sz;
 	for(size_t i=0, sz=data[0].size(); i<sz; i++){
 		float z = data[0].offset2pos(i)[2];
 		for(int k=0; k<cell_sz; k++) data[0][i].m[k] = rotate(m0, n, 2*M_PI*(z+coord[k][2])*helic_n/data[0].bbox()[2]);
@@ -203,7 +217,7 @@ void Model::calc(int steps){
 				Vecf<3> Hex = Hexch(1, i, nb, k);
 				Vecf<3> H = Hex + Hext + nK*m1*Kx2*nK; 
 				Vecf<3> dmdt = m1%(-gamma*H -alpha*m1%H);
-				m0 += dt*_3*(dm + .5*dmdt);
+				m0 += dt*_3*(dm + .5f*dmdt);
 				// m0 = gauss_rotate(m0/m0.abs(), sghT, seed); // old variant, errro
 				m0 /= m0.abs(); // data[2][i].m[k] = m0;
 
@@ -314,7 +328,7 @@ void Model::calc_av(){  // считаем средние значения
 		}  // конец цикла внутри ячейки
 	} // конец цикла по ячейкам
 
-	M  = vec(Mx, My, Mz)/(data_sz*cell_sz);
+	M  = vec(Mx, My, Mz)/(data_sz*cell_sz);  
 	M2 = vec(M2x, M2y, M2z)/(data_sz*cell_sz);
 	W  = vec(-J*eta1/2+We+Wa, -J*eta1/2, We, Wa)/(data_sz*cell_sz);
 	eta = vecf(eta1, eta2, eta3, eta4)/(data_sz*cell_sz*nb_sz);
@@ -359,7 +373,7 @@ void Model::calc_av(){  // считаем средние значения
 		eta_k2_eq += eta_k2;  eta_k3_eq += eta_k3;  eta_k4_eq += eta_k4;
 		for(int i=0; i<corr_max; i++) corr_eq[i] += corr[i];
 		
-		Tsc_eq += T_sc;
+		Tsc_eq += T_sc;  MxMeq += M&M;
 		// Seq += S;
 	}
 
@@ -381,6 +395,7 @@ void Model::clean_av_eq(){
 	eq_count = 0; Meq = vec(0.); Mabs_eq = 0.; M2eq = vec(0.); Weq = vec(0.); Qeq = vec(0.);
 	eta_eq = vec(0.); eta_k2_eq = vec(0.); eta_k3_eq = vec(0.); eta_k4_eq = vec(0.);
 	PHIeq = vec(0.); THETAeq = vec(0.); XIeq = vec(0.); Psi_eq = 0; UpsilonMeq = Vec<3>();
+	MxMeq = vec(0.);
 	// UpsHextMeq = 0;   HextMMMeq = 0;
 
 	if(f_rank>=0) f_eq.fill(0.f);
@@ -410,6 +425,8 @@ void Model::finish(){
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] /= eq_count;
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] /= eq_count;
 		for(int i=0; i<corr_max; i++) corr_eq[i] /= eq_count;
+
+		MxMeq /= eq_count;
 	} else {
 		Weq = W;
 		Meq = M;
@@ -433,6 +450,8 @@ void Model::finish(){
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] = fz[i];
 
 		corr_eq = corr;
+
+		MxMeq = M&M;
 	}
 	if(corr_max){
 		File  fcorr_eq("%corr_eq.dat", "w", path); fcorr_eq("#:k eta eta2 eta3 eta4\n1 %\n", eta_eq);
@@ -460,9 +479,47 @@ bool Model::load_data(const char *path){
 	std::string rmode; int rrank; std::stringstream(head)>>rmode>>rrank;
 	if(rmode!=mode){ WMSG(mode, rmode, data_rank, rrank);  return false; }
 	data_rank = rrank; for(int k=0; k<4; k++) data[k].init(data_rank);
+	Natoms = data[0].size()*cell_sz;
 	if(fin.read(&(data[0][0]), data[0].size()*sizeof(Cell))!=data[0].size()*sizeof(Cell)){ WMSG("file too short"); return false; }
 	rt_init += omp_get_wtime()-t0;
 	open_tvals(); init_conditions = true;  // флаг задания н.у.
 	return true;
+}
+//------------------------------------------------------------------------------
+void Model::check_rand(int steps, const char *path){  ///< создает файл с приращениями <M>, <eta> от случайного источника по числу шагов, остальные члены отключены.
+	float sghT = sqrt(2*dt*alpha*T); 
+	std::ofstream fout(path);  fout<<"#:dM dMx dMy dMz deta\n";
+	size_t data_sz = data[0].size(); 
+	for(int it=0; it<steps; it++){
+#pragma omp parallel for if(threads!=1)
+		for(size_t i=0; i<data_sz; ++i){
+			int thID = omp_get_thread_num();
+			for(int k=0; k<cell_sz; k++){
+				const Vecf<3> &m0 = data[0][i].m[k]; Vecf<3> &m1 = data[1][i].m[k];
+				m1 = rotate(m0, randN01.V<3>(thID)*sghT);
+			}
+		}
+		double M1x=0, M1y=0, M1z=0, eta1=0;
+	
+#pragma omp parallel for reduction(+:M1x,M1y,M1z,eta1) if(threads!=1)
+		for(size_t cID=0; cID<data_sz; cID++){  // начало цикла по ячейкам
+			// int thID = omp_get_thread_num();
+			ZCubeNb<3> nb = data[0].get_nb(cID, 7);
+			for(int k=0; k<cell_sz; k++){  // начало цикла внутри ячейки
+				const Vecf<3> &m1 = data[1][cID].m[k];
+				M1x += m1[0];        M1y += m1[1];        M1z += m1[2];
+				for(const auto &l: nb_pos[k]){  // начало цикла по соседям
+					const Vecf<3> &mj = data[1][cID+nb[l.off]].m[l.cell];
+					float e = m1*mj; eta1 += e; 
+				}  // конец цикла по соседям
+				//------- конец расчета Q ----------------- 
+			}  // конец цикла внутри ячейки
+		} // конец цикла по ячейкам
+
+		Vec<3> M1 = vec(M1x, M1y, M1z)/(data_sz*cell_sz);  
+		eta1 /= (data_sz*cell_sz*nb_sz);
+
+		fout<<M1.abs()-M.abs()<<' '<<M1-M<<' '<<eta1-eta[0]<<'\n';		
+	}
 }
 //------------------------------------------------------------------------------
