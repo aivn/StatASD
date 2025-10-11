@@ -8,7 +8,9 @@ from aiwlib.iostream import *
 from aiwlib.SphereF import *
 from aiwlib.racs import *
 
-calc = Calc(t_max=(500., '# максимальное время перемагничивания'), steps=10, _repo='remagn', Hz=-0.1, mode=cvar.mode, tau_r=(0., '# время перемагничивания'))
+calc = Calc(t_max=(500., '# максимальное время перемагничивания'), steps=10, _repo='remagn', Hz=(-0.1, '#амплитуда поля перемагничивания'),
+            mode=cvar.mode, tau_r=(0., '# время перемагничивания'),
+            angle=(0., '#угол между nK и Hext в градусах'))
 calc.tags.add(cvar.mode)
 
 M0 = 1
@@ -22,11 +24,10 @@ model.init(calc.path)
 
 cond_name = 'init_conditions/%s-R%i-T%g-H0-K%g.spins'%(cvar.mode, model.data_rank, model.T, model.K)
 if not os.path.exists(cond_name) or not model.load_data(cond_name): print 'init cond. %r not found'%cond_name; exit(1)
-print 1
 
 calc.Mbeg = M0 = model.M[2]
 
-model.Hext[2] = calc.Hz
+model.Hext[0], model.Hext[2] = calc.Hz*math.sin(calc.angle*math.pi/180), calc.Hz*math.cos(calc.angle*math.pi/180)
 
 if model.f_rank>=0: fsph = File(calc.path+'f.sph', 'w')
 
@@ -34,7 +35,10 @@ if model.f_rank>=0: fsph = File(calc.path+'f.sph', 'w')
 while model.t<calc.t_max:
     model.calc(calc.steps); #model.dump_Ms_arr()
     if model.f_rank>=0:  model.f.dump(fsph); fsph.flush()
+    if model.fz_sz>=0:  model.dump_fz(calc.path+'/fz-t%06g.dat'%model.t, False)
     if model.M[2]<0: calc.tau_r = model.t; break
 
 calc.Mend = model.M[2]
+if model.fz_sz>=0:  model.dump_fz(calc.path+'/fz-eq.dat', True)
+
 #model.finish()

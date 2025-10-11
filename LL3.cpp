@@ -264,7 +264,7 @@ void Model::calc_av(){  // считаем средние значения
 
 	for(int &v: f_buf) v = 0;
 	for(int &v: fz_buf) v = 0;
-	float _dz = fz_sz? 2./fz_sz: 0;
+	float _dz = fz_sz/2.; 
 
 	for(double &x: Q_buf) x = 0; 
 	for(double &x: eta_k_buf) x = 0;
@@ -295,7 +295,7 @@ void Model::calc_av(){  // считаем средние значения
 			xi_yz -= m0[1]*m0[2]; 
 
 			if(f_rank>=0) f_buf[thID*f.size()+f.find(m0)]++;
-			if(fz_sz){ int fid = floor(m0[2]*_dz); fz_buf[thID*fz_sz+(fid<0 ? 0 : (fid>=fz_sz ? fz_sz-1 : fid))]++; }
+			if(fz_sz){ int fid = floor((1+m0[2])*_dz); fz_buf[thID*fz_sz+(fid<0 ? 0 : (fid>=fz_sz ? fz_sz-1 : fid))]++; }
 
 			for(int l=0; l<corr_max; l++) for(int d=0; d<corr_direct_sz; d++){  // расчет корреляционной функции
 					float e = m0*data[0][corr_direct_offs[(cID*corr_max + l)*corr_direct_sz + d]].m[k];
@@ -383,7 +383,8 @@ void Model::calc_av(){  // считаем средние значения
 		if(calc_eq) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] += f[i];
 	}
 	if(fz_sz>0){
-		float  df = 1./(2/fz_sz*data_sz*cell_sz);
+		for(float &v: fz) v = 0;
+		float  df = 1./(2./fz_sz*data_sz*cell_sz);
 		for(int i=0, sz=fz_buf.size(); i<sz; i++) fz[i%fz_sz] += df*fz_buf[i];
 		if(calc_eq) for(int i=0; i<fz_sz; i++) fz_eq[i] += fz[i];
 	}
@@ -461,7 +462,7 @@ void Model::finish(){
 //------------------------------------------------------------------------------
 void Model::dump_fz(const char *path, bool eq) const {
 	std::ofstream fout(path); fout<<"#:m_z f\n";
-	for(int i=0; i<fz_sz; i++) fout<<(i+.5)*2/fz_sz<<' '<<(eq? fz_eq: fz)[i]<<'\n';
+	for(int i=0; i<fz_sz; i++) fout<<(i+.5)*2/fz_sz-1<<' '<<(eq? fz_eq: fz)[i]<<'\n';
 }
 void Model::dump_Ms_arr(){
 	if(Ms_start<0 || Ms_start>=data_rank) return;
