@@ -54,6 +54,7 @@ void Model::init(const char *path_){
 	sph_init_table(ind(5, f_rank).max());
 	if(f_rank>=0){ f.init(f_rank, 0, 1); f_eq.init(f_rank, 0, 1); f_eq.fill(0.f); f_buf.resize(Nth*f.size()); }
 	if(fz_sz){ fz.resize(fz_sz); fz_eq.resize(fz_sz, 0.f); fz_buf.resize(Nth*fz_sz); }
+	if(f_eta_sz){ f_eta.resize(f_eta_sz); f_eta_eq.resize(f_eta_sz, 0.f); f_eta_buf.resize(Nth*f_eta_sz); }
 
 	t = 0.;   T_sc = T; Tsc_eq = 0;
 
@@ -80,6 +81,11 @@ void Model::init(const char *path_){
 #ifdef MAGNONS
 	MG.init(data_rank, T, cL, dt*alpha);
 #endif // MAGNONS
+
+
+	fftw.init(Ind<3>(1<<data_rank), 3);
+	fspectrum.open(std::string(path)+"spectrum.dat"); fspectrum<<"#:t nu ampl\n";
+
 	rt_init += omp_get_wtime()-t0;
 }
 //------------------------------------------------------------------------------
@@ -255,6 +261,107 @@ void Model::calc(int steps){
 	drop_tvals();
 }
 //------------------------------------------------------------------------------
+void Model::calc_quant(int steps){
+	if(!init_conditions) start_gauss();  // флаг задания н.у.
+	float sghT = sqrt(2*dt*alpha*T); // v4,5 2*sqrt(dt*alpha*T);
+	size_t data_sz = data[0].size();  eta_old = eta[0];  float Kx2 = 2*K;
+	for(int Nt=0; Nt<steps; Nt++){
+		double t0 = omp_get_wtime();
+#pragma omp parallel for if(threads!=1)
+		for(size_t i=0; i<data_sz; ++i){
+			ZCubeNb<3> nb = data[0].get_nb(i, 7);
+			for(int k=0; k<cell_sz; k++){
+				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &dm = data[3][i].m[k];
+				Vecf<3> Hex = Hexch(0, i, nb, k);
+				Vecf<3> H = Hex + Hext + nK*m0*Kx2*nK; 
+				Vecf<3> dmdt = -gamma*m0%H;
+				m1 = m0 + .5f*dt*dmdt;
+				dm = .5f*dmdt;
+			}
+		}
+		//-----------
+#pragma omp parallel for if(threads!=1)
+		for(size_t i=0; i<data_sz; ++i){
+			ZCubeNb<3> nb = data[0].get_nb(i, 7);
+			for(int k=0; k<cell_sz; k++){
+				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &m2 = data[2][i].m[k], &dm = data[3][i].m[k];
+				Vecf<3> Hex = Hexch(1, i, nb, k);
+				Vecf<3> H = Hex + Hext + nK*m1*Kx2*nK; 
+				Vecf<3> dmdt = -gamma*m1%H;
+				m2 = m0 + .5f*dt*dmdt;
+				dm += dmdt;
+			}
+		}
+		//------------
+#pragma omp parallel for if(threads!=1)
+		for(size_t i=0; i<data_sz; ++i){
+			ZCubeNb<3> nb = data[0].get_nb(i, 7);
+			for(int k=0; k<cell_sz; k++){
+				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &m2 = data[2][i].m[k], &dm = data[3][i].m[k];
+				Vecf<3> Hex = Hexch(2, i, nb, k);
+				Vecf<3> H = Hex + Hext + nK*m2*Kx2*nK; 
+				Vecf<3> dmdt = -gamma*m2%H;
+				m1 = m0 + dt*dmdt;
+				dm += dmdt;
+			}
+		}
+		//-------------
+#pragma omp parallel for if(threads!=1)
+		for(size_t i=0; i<data_sz; ++i){
+			ZCubeNb<3> nb = data[0].get_nb(i, 7);
+			for(int k=0; k<cell_sz; k++){
+				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k], &dm = data[3][i].m[k];
+				Vecf<3> Hex = Hexch(1, i, nb, k);
+				Vecf<3> H = Hex + Hext + nK*m1*Kx2*nK; 
+				Vecf<3> dmdt = -gamma*m1%H;
+				m0 += dt*_3*(dm + .5f*dmdt);
+			}
+		}
+		//-------------
+		float ds = 2./(1-n_s), _ds = 1./ds, dsT = ds/T;
+#pragma omp parallel for if(threads!=1)
+		for(size_t i=0; i<data_sz; ++i){
+			int thID = omp_get_thread_num();
+			ZCubeNb<3> nb = data[0].get_nb(i, 7);
+			for(int k=0; k<cell_sz; k++){
+				Vecf<3> &m0 = data[0][i].m[k], &m1 = data[1][i].m[k];
+				Vecf<3> Hex = Hexch(0, i, nb, k);
+				Vecf<3> H = Hex + Hext + nK*m0*Kx2*nK;  
+				m1 = m0 - gamma*alpha*dt*(m0%(m0%H));  
+				m1 = rotate(m1/m1.abs(), randN01.V<3>(thID)*sghT);
+				float H_abs = H.abs();
+				if(H_abs>1e-6){
+					Vecf<3> nH = H/H_abs;
+					/*   v0
+					float p0 = m1*nH, p = roundf((1+p0)*_ds)*ds-1;
+					*/
+					float p0 = m1*nH, p1 = floorf((1+p0)*_ds)*ds-1, p2 = p1+ds, p;
+					/*   v1
+					if(p1<-1-.5f*ds) p = p2;
+					else if(p2>1+.5f*ds) p = p1;
+					else p = randN01.u(thID)<(p2-p0)*_ds? p1: p2; 
+					*/
+					if(p1<-1-.5f*ds){ p1 = -1; p2 = ds-1; }
+					else if(p2>1+.5f*ds){ p1 = 1-ds; p2 = 1; }
+					p = randN01.u(thID)*(1+exp(H_abs*dsT))<1? p1: p2;  // v2
+					if(fabsf(p)<.999){
+						//  m1 = (nH*p) + w*m_ort ==>  (nH*p)^2 + w^2*m_ort^2=1 ==> w = sqrt((1-(nH*p)^2)/m_ort^2)
+						Vecf<3> m_pr = nH*p, m_ort = m1-nH*p0;
+						float w = sqrtf((1-m_pr*m_pr)/(m_ort*m_ort));
+						m1 = m_pr + w*m_ort; 			
+					} else m1 = p*nH;
+				}				
+			}
+		}
+		for(size_t i=0; i<data_sz; ++i)	for(int k=0; k<cell_sz; k++) data[0][i].m[k] = data[1][i].m[k];
+		//---------------
+		rt_calc += omp_get_wtime() - t0;
+		t += dt; if(out_tm0) ftm("% % %\n", t, data[0][0].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
+		if(calc_eq || Nt==steps-1) calc_av();
+	}
+	drop_tvals();
+}
+//------------------------------------------------------------------------------
 void Model::calc_av(){  // считаем средние значения
 	double t0 = omp_get_wtime();
 	size_t data_sz = data[0].size(); 
@@ -264,7 +371,8 @@ void Model::calc_av(){  // считаем средние значения
 
 	for(int &v: f_buf) v = 0;
 	for(int &v: fz_buf) v = 0;
-	float _dz = fz_sz/2.; 
+	for(float &v: f_eta_buf) v = 0;
+	float _dz = fz_sz/2., _deta = f_eta_sz/2., df_eta = 1./(2./f_eta_sz*data_sz*cell_sz*nb_sz/2); 
 
 	for(double &x: Q_buf) x = 0; 
 	for(double &x: eta_k_buf) x = 0;
@@ -309,6 +417,8 @@ void Model::calc_av(){  // считаем средние значения
 				float e = m0*mj, e2 = e*e; eta1 += e; eta2 += e2;  eta3 += e*e2; eta4 += e2*e2; 
 				psi -= m0*(mj%(mj%nK))*(mj*nK);
 				Vecf<3> UM = m0%(m0%mj); UMx += UM[0]; UMy += UM[1]; UMz += UM[2];
+
+				if(f_eta_sz){ int fid = floor((1+e)*_deta); f_eta_buf[thID*f_eta_sz+(fid<0 ? 0 : (fid>=f_eta_sz ? f_eta_sz-1 : fid))] += df_eta; }
 #ifdef CALC_Q
 				mj_buf[j++] = mj;  // накопление соседей
 #endif  // CALC_Q
@@ -388,6 +498,11 @@ void Model::calc_av(){  // считаем средние значения
 		for(int i=0, sz=fz_buf.size(); i<sz; i++) fz[i%fz_sz] += df*fz_buf[i];
 		if(calc_eq) for(int i=0; i<fz_sz; i++) fz_eq[i] += fz[i];
 	}
+	if(f_eta_sz>0){
+		for(float &v: f_eta) v = 0;
+		for(int i=0, sz=f_eta_buf.size(); i<sz; i++) f_eta[i%f_eta_sz] += f_eta_buf[i];
+		if(calc_eq) for(int i=0; i<f_eta_sz; i++) f_eta_eq[i] += f_eta[i];
+	}
 	if(calc_eq) eq_count++;
 	rt_diagn += omp_get_wtime() - t0;
 }
@@ -401,6 +516,7 @@ void Model::clean_av_eq(){
 
 	if(f_rank>=0) f_eq.fill(0.f);
 	for(float &v: fz_eq) v = 0;
+	for(float &v: f_eta_eq) v = 0;
 	Tsc_eq = 0; // Seq = 0;
 }
 //------------------------------------------------------------------------------
@@ -425,6 +541,7 @@ void Model::finish(){
 		
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] /= eq_count;
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] /= eq_count;
+		if(f_eta_sz>=0)  for(int i=0; i<f_eta_sz; i++) f_eta_eq[i] /= eq_count;
 		for(int i=0; i<corr_max; i++) corr_eq[i] /= eq_count;
 
 		MxMeq /= eq_count;
@@ -449,6 +566,7 @@ void Model::finish(){
 
 		if(f_rank>=0) for(int i=0, sz=f.size(); i<sz; i++) f_eq[i] = f[i];
 		if(fz_sz>=0)  for(int i=0; i<fz_sz; i++) fz_eq[i] = fz[i];
+		if(f_eta_sz>=0)  for(int i=0; i<f_eta_sz; i++) f_eta_eq[i] = f_eta[i];
 
 		corr_eq = corr;
 
@@ -463,6 +581,10 @@ void Model::finish(){
 void Model::dump_fz(const char *path, bool eq) const {
 	std::ofstream fout(path); fout<<"#:m_z f\n";
 	for(int i=0; i<fz_sz; i++) fout<<(i+.5)*2/fz_sz-1<<' '<<(eq? fz_eq: fz)[i]<<'\n';
+}
+void Model::dump_f_eta(const char *path, bool eq) const {
+	std::ofstream fout(path); fout<<"#:eta f\n";
+	for(int i=0; i<f_eta_sz; i++) fout<<(i+.5)*2/f_eta_sz-1<<' '<<(eq? f_eta_eq: f_eta)[i]<<'\n';
 }
 void Model::dump_Ms_arr(){
 	if(Ms_start<0 || Ms_start>=data_rank) return;
@@ -521,6 +643,19 @@ void Model::check_rand(int steps, const char *path){  ///< создает фай
 		eta1 /= (data_sz*cell_sz*nb_sz);
 
 		fout<<M1.abs()-M.abs()<<' '<<M1-M<<' '<<eta1-eta[0]<<'\n';		
+	}
+}
+//------------------------------------------------------------------------------
+void Model::calc_spectrum(const char *path){
+	fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+	std::vector<float> sp; float f_max = 0; 
+	fftw.spectrum(sp, f_max, 7);
+	if(path){
+		std::ofstream fout(path);  fout<<"#:nu ampl\n";
+		for(int i=0, sz=sp.size(); i<sz; i++) fout<<(i+.5)*f_max/sz<<' '<<sp[i]<<'\n';
+	} else {		
+		for(int i=0, sz=sp.size(); i<sz; i++) fspectrum<<t<<' '<<(i+.5)*f_max/sz<<' '<<sp[i]<<'\n';
+		fspectrum<<std::endl;
 	}
 }
 //------------------------------------------------------------------------------

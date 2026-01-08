@@ -4,28 +4,33 @@
 using namespace aiw;
 //------------------------------------------------------------------------------
 void Model::init(const char *path){
-	for(int i=0; i<4; i++) data[i].resize(mesh_sz.prod(), Vecf<3>(0.f, 0.f, 1.f));
-	links.resize(data[0].size()*3);
+	mul[0] = 1; for(int i=0; i<4; i++) mul[i+1] = mul[i]*mesh_sz[i];
+	for(int i=0; i<4; i++) data[i].resize(mul[3], Vecf<3>(0.f, 0.f, 1.f));
+	links.resize(mul[3]*3);
 		
-	calc_off = CalcOff<3>(Vec<3, int64_t>(mesh_sz), periodic);
+	// calc_off = CalcOff<3>(Vec<3, int64_t>(mesh_sz), periodic);
 	Nth = omp_get_max_threads();
 	randN01.init(Nth);
 
 	std::uniform_real_distribution<double> u(0., 1.);
 	std::mt19937 gen; std::random_device rd;  gen.seed(rd());
-	for(size_t i=0, sz=links.size(); i<sz; i++) links[i] = u(gen)<sparse;
+	double S = 0; for(size_t i=0, sz=links.size(); i<sz; i++) S += (links[i] = u(gen)<sparse);
 	
 	ftvals.open(std::string(path)+"tvals.dat");
 	W[1] = 0; for(int64_t off=0, sz=data[0].size(); off<sz; off++) W[1] -= Hexch(0, off)[2];
 	W[1] /= 2*data[0].size(); W[2] = -Hext[2]; W[3] = -K*nK[2]*nK[2]; W[0] = W[1] + W[2] + W[3];
 	n_b = -W[1]*2;
 	ftvals<<"#:t M Mx My Mz M2x M2y M2z eta W Wexch Wext Wanis\n0 1 0 0 1 0 0 1 1 "<<W<<'\n';
+	WMSG(mesh_sz, links.size(), S/links.size(), data[0].size(), mul, n_b);
+	// exit(0);
+	fftw.init(mesh_sz, 3);
+	fspectrum.open(std::string(path)+"spectrum.dat"); fspectrum<<"#:t nu ampl\n";
 }
 //------------------------------------------------------------------------------
 const float _3 = 1./3;
 void Model::calc(int steps){
 	int64_t data_sz = data[0].size();
-	float Kx2 = 2*K,  sghT = sqrt(2*dt*alpha);
+	float Kx2 = 2*K,  sghT = sqrt(2*dt*alpha*T); 
 	for(int Nt=0; Nt<steps; Nt++){
 #pragma omp parallel for 
 		for(int64_t i=0; i<data_sz; ++i){
@@ -108,6 +113,19 @@ void Model::finish(){
 		M2eq = M2;
 		Mabs_eq = M.abs();
 		eta_eq = eta;
+	}
+}
+//------------------------------------------------------------------------------
+void Model::calc_spectrum(const char *path){
+	fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos[0]+(pos[1]+pos[2]*mesh_sz[1])*mesh_sz[0]][c]-M[c]; });
+	std::vector<float> sp; float f_max = 0; 
+	fftw.spectrum(sp, f_max, 7);
+	if(path){
+		std::ofstream fout(path);  fout<<"#:nu ampl\n";
+		for(int i=0, sz=sp.size(); i<sz; i++) fout<<(i+.5)*f_max/sz<<' '<<sp[i]<<'\n';
+	} else {		
+		for(int i=0, sz=sp.size(); i<sz; i++) fspectrum<<t<<' '<<(i+.5)*f_max/sz<<' '<<sp[i]<<'\n';
+		fspectrum<<std::endl;
 	}
 }
 //------------------------------------------------------------------------------

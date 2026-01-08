@@ -10,7 +10,7 @@ from aiwlib.racs import *
 
 calc = Calc(t_relax=(50., '#время релаксации'), t_eq=(10., '#время накопления равновесной статистики'), t_max=(0., '#максимальное время расчета'),
             steps=(10, '#число шагов между сбросом данных'), _repo='repo', Hz=(0., '#внешнее поле (для задания из командной строки)'),
-            M0z=(1., '#начальная намагниченность (для задания из командной строки)'), mode=cvar.mode)
+            M0z=(1., '#начальная намагниченность (для задания из командной строки)'), spectr=(0, '# скважность сброса спектра (в больших шагах)'), mode=cvar.mode)
 calc.tags.add(cvar.mode)
 
 model = calc.wrap(Model(), '', lambda: model.t/calc.t_max)
@@ -30,9 +30,14 @@ model.init(calc.path)
 if model.f_rank>=0: fsph = File(calc.path+'f.sph', 'w')
 #fsph_av = File(calc.path+'f_av.sph', 'w')
 
+istep = 0
+
 while model.t<calc.t_max:
     model.calc_eq = calc.t_eq and model.t>calc.t_relax
     model.calc(calc.steps)    
     if model.f_rank>=0:  model.f.dump(fsph); fsph.flush()
-
+    if calc.spectr and istep%calc.spectr==0: model.calc_spectrum()
+    istep += 1
+    
+model.calc_spectrum(calc.path+'spectrum-final.dat')
 model.finish()

@@ -36,9 +36,12 @@ while model.t<calc.t_max:
     model.calc(calc.steps); #model.dump_Ms_arr()
     if model.f_rank>=0:  model.f.dump(fsph); fsph.flush()
     if model.fz_sz>=0:  model.dump_fz(calc.path+'/fz-t%06g.dat'%model.t, False)
+    if model.f_eta_sz>=0:  model.dump_f_eta(calc.path+'/feta-t%06g.dat'%model.t, False)
     if model.M[2]<0: calc.tau_r = model.t; break
+
+model.finish()
 
 calc.Mend = model.M[2]
 if model.fz_sz>=0:  model.dump_fz(calc.path+'/fz-eq.dat', True)
+if model.f_eta_sz>=0:  model.dump_f_eta(calc.path+'/feta-eq.dat', True)
 
-#model.finish()

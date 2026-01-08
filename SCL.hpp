@@ -5,7 +5,8 @@
 
 #include <aiwlib/vec>
 #include <aiwlib/gauss>
-#include <aiwlib/calc_off>
+#include <aiwlib/fftw>
+// #include <aiwlib/calc_off>
 
 //------------------------------------------------------------------------------
 class Model{
@@ -22,8 +23,9 @@ class Model{
 		aiw::ind(-1, 1, 1), aiw::ind( 1,-1, 1), aiw::ind( 1, 1,-1), aiw::ind( 1, 1, 1)
 	};
 
-	std::ofstream ftvals;
-	
+	std::ofstream ftvals, fspectrum;
+
+	aiw::FFTW<3, float> fftw;
 	
 	int Nth;  // число тредов
 	int eq_count = 0;     // число шагов по расчету средних
@@ -57,21 +59,40 @@ public:
 	void calc(int Nsteps);
 	void finish();	
 
-protected:
-	aiw::CalcOff<3, int64_t> calc_off;
+	void calc_spectrum(const char *path=nullptr);
 	
-	aiw::Vecf<3> Hexch(int dID, int64_t mID) const {
+protected:
+	// aiw::CalcOff<3, int64_t> calc_off;
+	aiw::Ind<4> mul;
+	int64_t calc_off(int64_t off0, int axis, int pm) const {
+		int64_t off = off0 + mul[axis]*pm, c0 = off0/mul[axis+1], c = off/mul[axis+1];
+		if(off>=0 && c==c0) return off;
+		if(periodic&(1<<axis)){
+			if(off<0 || c<c0) return off+mul[axis+1];
+			return off-mul[axis+1];
+		}
+		return -1; // out of range
+	}
+	int64_t calc_off(int64_t off, const aiw::Ind<3> &dpos) const {
+		for(int a=0; a<3; a++){
+			off = calc_off(off, a, dpos[a]);
+			if(off<0) break; 
+		}
+		return off;
+	}
+
+	aiw::Vecf<3> Hexch(int dID, size_t mID){
 		aiw::Vecf<3> H;
 		if(!dense_mode){
-			for(int a=0; a<3; a++) if(links[mID*3+a]) H += J[0]*data[dID][calc_off(mID, a, 1)];
+			for(int a=0; a<3; a++) if(links[mID*3+a]){ int64_t off = calc_off(mID, a, 1); if(off>=0) H += J[0]*data[dID][off]; }
 			for(int a=0; a<3; a++){
 				int64_t off = calc_off(mID, a, -1);
-				if(links[off*3+a]) H += J[0]*data[dID][off];
+				if(off>=0 && links[off*3+a]) H += J[0]*data[dID][off];
 			}
 		} else {
-			for(int a=0; a<3; a++) for(int d=-1; d<=1; d+=2) H += J[0]*data[dID][calc_off(mID, a, d)];
-			if(dense_mode>=1) for(const aiw::Ind<3> dpos: stencil1) H += J[1]*data[dID][calc_off(mID, dpos)];
-			if(dense_mode>=2) for(const aiw::Ind<3> dpos: stencil2) H += J[2]*data[dID][calc_off(mID, dpos)];
+			for(int a=0; a<3; a++) for(int d=-1; d<=1; d+=2){ int64_t off = calc_off(mID, a, d); if(off>=0) H += J[0]*data[dID][off]; }
+			if(dense_mode>=1) for(const aiw::Ind<3> dpos: stencil1){ int64_t off = calc_off(mID, dpos); if(off>=0) H += J[1]*data[dID][off]; }
+			if(dense_mode>=2) for(const aiw::Ind<3> dpos: stencil2){ int64_t off = calc_off(mID, dpos); if(off>=0) H += J[2]*data[dID][off]; }
 		}
 		return H;
 	}

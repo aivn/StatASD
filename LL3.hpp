@@ -1,10 +1,12 @@
 #ifndef LANDAU_LIFSHITZ_HPP
 #define LANDAU_LIFSHITZ_HPP
 
+#include <fstream>
 #include <aiwlib/zcube>
 // #include <aiwlib/mesh_as_zcube>
 #include <aiwlib/gauss>
 #include <aiwlib/sphere>
+#include <aiwlib/fftw>
 using namespace aiw;  // ???
 
 #ifdef MAGNONS
@@ -89,6 +91,8 @@ struct Cell{
 //------------------------------------------------------------------------------
 class Model{
 	RandN01<float> randN01;
+	std::ofstream fspectrum;
+	aiw::FFTW<3, float> fftw;
 	aiw::File ftm, ftvals; // эволюция одного магнитного момента и tvals
 	ZCube<Cell, 3> data[4];
 
@@ -117,7 +121,7 @@ class Model{
 	std::vector<double> Q_buf, eta_k_buf;
 	double eta_old, dot_eta = 0.;  // для расчета Ts
 
-	std::vector<float> fz, fz_eq;
+	std::vector<float> fz, fz_eq, f_eta, f_eta_eq, f_eta_buf;
 	std::vector<int> corr_direct_offs;  // массив смещений для расчета корреляционных функций, размер corr_direct_sz*(1<<data_rank*3)*corr_max;
 	std::vector<aiw::Vec<4> > corr, corr_eq, corr_buf;  // корреляционная функция
 	aiw::File corr_fout;                                // файл для вывода корреляционной функции
@@ -171,7 +175,8 @@ public:
 	aiw::Vec<6> XIeq;        ///< равновесные компоненты матрицы XI: Xi_xx, Xi_yy, Xi_zz, Xi_xy, Xi_xz, Xi_yz (вклад внешнего поля в диссипацию) в первом уравнении CMD
 	double Psi;              ///< Psi=-<m0_i*(m_j%(m_j%nK))*(m_j*nK)>: вклад анизотропии во втором уравнении CMD
 	double Psi_eq = 0;       ///< равновесный Psi=-<m0_i*(m_j%(m_j%nK))*(m_j*nK)>: вклад анизотропии во втором уравнении CMD
-	aiw::Vec<3> MxMeq;       ///< равновесное <Mav * Mav> 
+	aiw::Vec<3> MxMeq;       ///< равновесное <Mav * Mav>
+	int n_s = 0;             ///< число состояний спина при квантовании
 	size_t Natoms;
 	
 	// double S;                ///< энтропия (приближенный расчет через S1 и S2)
@@ -186,6 +191,9 @@ public:
 
 	int fz_sz = 0;  ///< размер одночастичной функции распределения f1(m_z), если 0 функция не строится
 	void dump_fz(const char *path, bool eq) const;  ///< сброс одночастичной функции распределения f1(m_z) в .dat файл
+
+	int f_eta_sz = 0;  ///< размер двухчастичной функции распределения f2(eta), если 0 функция не строится
+	void dump_f_eta(const char *path, bool eq) const;  ///< сброс двухчастичной функции распределения f2(eta) в .dat файл
 
 	int corr_max = -1;  ///< размер корреляционной функции (максимальное удаление между частицами в ячейках)
 	aiw::Vec<4> get_corr_eq(int i) const { return corr_eq.at(i); }  // для финальной сериализации, возвращает степени eta_far
@@ -205,6 +213,7 @@ public:
 
 	int threads = 0;  ///< задает число тредов, если =0 то берется системное значение
 	void calc(int steps);  ///< считает на steps шагов и в конце расситывает средние. При первом вызвое вызывает start_gauss() если не было другого задания н.у.
+	void calc_quant(int steps);  ///< считает на steps шагов и в конце расситывает средние. При первом вызвое вызывает start_gauss() если не было другого задания н.у.
 	double rt_init = 0;   ///< суммарное время инициализации
 	double rt_calc = 0;   ///< суммарное время расчета
 	double rt_diagn = 0;  ///< суммарное время расчета диагностики
@@ -215,6 +224,8 @@ public:
     bool load_data(const char *path);        ///< загружает состояние (все магнитные моменты)  в бинарном формате, трактуется как задание н.у.
 
 	void check_rand(int steps, const char *path);  ///< создает файл с приращениями <M>, <eta> от случайного источника по числу шагов, остальные члены отключены.
+
+	void calc_spectrum(const char *path=nullptr);
 };
 //------------------------------------------------------------------------------
 #endif //LANDAU_LIFSHITZ_HPP
