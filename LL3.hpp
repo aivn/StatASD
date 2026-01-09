@@ -93,6 +93,7 @@ class Model{
 	RandN01<float> randN01;
 	std::ofstream fspectrum;
 	aiw::FFTW<3, float> fftw;
+	std::vector<double> spectr_eq; int spectr_eq_count = 0; float spectr_f_max = 0;
 	aiw::File ftm, ftvals; // эволюция одного магнитного момента и tvals
 	ZCube<Cell, 3> data[4];
 

@@ -39,5 +39,4 @@ while model.t<calc.t_max:
     if calc.spectr and istep%calc.spectr==0: model.calc_spectrum()
     istep += 1
     
-model.calc_spectrum(calc.path+'spectrum-final.dat')
 model.finish()

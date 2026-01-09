@@ -4,6 +4,7 @@
 using namespace aiw;
 //------------------------------------------------------------------------------
 void Model::init(const char *path){
+	this->path = path;
 	mul[0] = 1; for(int i=0; i<4; i++) mul[i+1] = mul[i]*mesh_sz[i];
 	for(int i=0; i<4; i++) data[i].resize(mul[3], Vecf<3>(0.f, 0.f, 1.f));
 	links.resize(mul[3]*3);
@@ -98,6 +99,14 @@ void Model::calc(int steps){
 		}
 	}
 	ftvals<<t<<' '<<M.abs()<<' '<<M<<' '<<M2<<' '<<eta<<' '<<W<<std::endl;
+	if(calc_eq){
+		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos[0]+(pos[1]+pos[2]*mesh_sz[1])*mesh_sz[0]][c]-M[c]; });
+		std::vector<float> sp; 
+		fftw.spectrum(sp, spectr_f_max, 7);
+		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
+		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] += sp[i];
+		spectr_eq_count++;
+	}
 }
 //------------------------------------------------------------------------------
 void Model::finish(){
@@ -114,6 +123,16 @@ void Model::finish(){
 		Mabs_eq = M.abs();
 		eta_eq = eta;
 	}
+	if(spectr_eq_count) for(auto& s: spectr_eq) s /= spectr_eq_count;
+	else{
+		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos[0]+(pos[1]+pos[2]*mesh_sz[1])*mesh_sz[0]][c]-M[c]; });
+		std::vector<float> sp; spectr_f_max = 0; 
+		fftw.spectrum(sp, spectr_f_max, 7);
+		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
+		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] = sp[i];	
+	}
+	std::ofstream fout(path+"spectr-eq.dat");  fout<<"#:nu ampl\n";
+	for(int i=0, ssz=spectr_eq.size(); i<ssz; i++) fout<<(i+.5)*spectr_f_max/ssz<<' '<<spectr_eq[i]<<'\n';	
 }
 //------------------------------------------------------------------------------
 void Model::calc_spectrum(const char *path){

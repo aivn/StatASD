@@ -26,6 +26,8 @@ class Model{
 	std::ofstream ftvals, fspectrum;
 
 	aiw::FFTW<3, float> fftw;
+	std::vector<double> spectr_eq; int spectr_eq_count = 0; float spectr_f_max = 0;
+	std::string path;
 	
 	int Nth;  // число тредов
 	int eq_count = 0;     // число шагов по расчету средних

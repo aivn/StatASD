@@ -258,6 +258,14 @@ void Model::calc(int steps){
 		t += dt; if(out_tm0) ftm("% % %\n", t, data[0][0].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 		if(calc_eq || Nt==steps-1) calc_av();
 	}
+	if(calc_eq){
+		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		std::vector<float> sp; spectr_f_max = 0; 
+		fftw.spectrum(sp, spectr_f_max, 7);
+		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
+		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] += sp[i];
+		spectr_eq_count++;
+	}
 	drop_tvals();
 }
 //------------------------------------------------------------------------------
@@ -358,6 +366,14 @@ void Model::calc_quant(int steps){
 		rt_calc += omp_get_wtime() - t0;
 		t += dt; if(out_tm0) ftm("% % %\n", t, data[0][0].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 		if(calc_eq || Nt==steps-1) calc_av();
+	}
+	if(calc_eq){
+		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		std::vector<float> sp; spectr_f_max = 0; 
+		fftw.spectrum(sp, spectr_f_max, 7);
+		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
+		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] += sp[i];
+		spectr_eq_count++;
 	}
 	drop_tvals();
 }
@@ -518,6 +534,8 @@ void Model::clean_av_eq(){
 	for(float &v: fz_eq) v = 0;
 	for(float &v: f_eta_eq) v = 0;
 	Tsc_eq = 0; // Seq = 0;
+
+	spectr_eq_count = 0; spectr_eq.clear(); spectr_f_max = 0;
 }
 //------------------------------------------------------------------------------
 void Model::finish(){
@@ -576,6 +594,17 @@ void Model::finish(){
 		File  fcorr_eq("%corr_eq.dat", "w", path); fcorr_eq("#:k eta eta2 eta3 eta4\n1 %\n", eta_eq);
 		for(int k=0; k<corr_max; k++) fcorr_eq("% %\n", k+2, corr_eq[k]);		
 	}
+	//-------------------------
+	if(spectr_eq_count) for(auto& s: spectr_eq) s /= spectr_eq_count;
+	else{
+		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		std::vector<float> sp; spectr_f_max = 0; 
+		fftw.spectrum(sp, spectr_f_max, 7);
+		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
+		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] = sp[i];	
+	}
+	std::ofstream fout(path+"spectr-eq.dat");  fout<<"#:nu ampl\n";
+	for(int i=0, ssz=spectr_eq.size(); i<ssz; i++) fout<<(i+.5)*spectr_f_max/ssz<<' '<<spectr_eq[i]<<'\n';	
 }
 //------------------------------------------------------------------------------
 void Model::dump_fz(const char *path, bool eq) const {
