@@ -85,6 +85,7 @@ void Model::init(const char *path_){
 
 	fftw.init(Ind<3>(1<<data_rank), 3);
 	fspectrum.open(std::string(path)+"spectrum.dat"); fspectrum<<"#:t nu ampl\n";
+	fspectr_av.open(std::string(path)+"tspectr-av.dat"); fspectr_av<<"#:t lm nu nu2\n";
 
 	rt_init += omp_get_wtime()-t0;
 }
@@ -261,9 +262,10 @@ void Model::calc(int steps){
 	if(calc_eq){
 		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
 		std::vector<float> sp; spectr_f_max = 0; 
-		fftw.spectrum(sp, spectr_f_max, 7);
+		auto av = fftw.spectrum(sp, spectr_f_max, 7);
 		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
 		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] += sp[i];
+		lm_eq += av.l_av; nu_eq += av.nu_av; nu2_eq += av.nu2_av;
 		spectr_eq_count++;
 	}
 	drop_tvals();
@@ -370,9 +372,10 @@ void Model::calc_quant(int steps){
 	if(calc_eq){
 		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
 		std::vector<float> sp; spectr_f_max = 0; 
-		fftw.spectrum(sp, spectr_f_max, 7);
+		auto av = fftw.spectrum(sp, spectr_f_max, 7);
 		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
 		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] += sp[i];
+		lm_eq += av.l_av; nu_eq += av.nu_av; nu2_eq += av.nu2_av;
 		spectr_eq_count++;
 	}
 	drop_tvals();
@@ -595,13 +598,18 @@ void Model::finish(){
 		for(int k=0; k<corr_max; k++) fcorr_eq("% %\n", k+2, corr_eq[k]);		
 	}
 	//-------------------------
-	if(spectr_eq_count) for(auto& s: spectr_eq) s /= spectr_eq_count;
-	else{
+	if(spectr_eq_count){
+		for(auto& s: spectr_eq) s /= spectr_eq_count;
+		lm_eq /= spectr_eq_count;
+		nu_eq /= spectr_eq_count;
+		nu2_eq /= spectr_eq_count;
+	}else{
 		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
 		std::vector<float> sp; spectr_f_max = 0; 
-		fftw.spectrum(sp, spectr_f_max, 7);
+		auto av = fftw.spectrum(sp, spectr_f_max, 7);
 		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
 		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] = sp[i];	
+		lm_eq = av.l_av; nu_eq = av.nu_av; nu2_eq = av.nu2_av;
 	}
 	std::ofstream fout(path+"spectr-eq.dat");  fout<<"#:nu ampl\n";
 	for(int i=0, ssz=spectr_eq.size(); i<ssz; i++) fout<<(i+.5)*spectr_f_max/ssz<<' '<<spectr_eq[i]<<'\n';	
@@ -678,7 +686,9 @@ void Model::check_rand(int steps, const char *path){  ///< создает фай
 void Model::calc_spectrum(const char *path){
 	fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
 	std::vector<float> sp; float f_max = 0; 
-	fftw.spectrum(sp, f_max, 7);
+	auto av = fftw.spectrum(sp, f_max, 7);
+	fspectr_av<<t<<' '<<av.l_av<<' '<<av.nu_av<<' '<<av.nu2_av<<std::endl;
+	// WMSG(av.l_av, av.nu_av, av.max_nu, av.max_ampl/(1<<data_rank*3));
 	if(path){
 		std::ofstream fout(path);  fout<<"#:nu ampl\n";
 		for(int i=0, sz=sp.size(); i<sz; i++) fout<<(i+.5)*f_max/sz<<' '<<sp[i]<<'\n';

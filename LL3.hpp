@@ -91,7 +91,7 @@ struct Cell{
 //------------------------------------------------------------------------------
 class Model{
 	RandN01<float> randN01;
-	std::ofstream fspectrum;
+	std::ofstream fspectrum, fspectr_av;
 	aiw::FFTW<3, float> fftw;
 	std::vector<double> spectr_eq; int spectr_eq_count = 0; float spectr_f_max = 0;
 	aiw::File ftm, ftvals; // эволюция одного магнитного момента и tvals
@@ -179,6 +179,9 @@ public:
 	aiw::Vec<3> MxMeq;       ///< равновесное <Mav * Mav>
 	int n_s = 0;             ///< число состояний спина при квантовании
 	size_t Natoms;
+	double lm_eq;            ///< средняя длина магнонов в равновесии
+	double nu_eq;            ///< средняя частота магнонов в равновесии
+	double nu2_eq;           ///< средний квадрат частоты магнонов в равновесии
 	
 	// double S;                ///< энтропия (приближенный расчет через S1 и S2)
 	// double Seq = 0;          ///< равновесное значение энтропии
