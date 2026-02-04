@@ -23,8 +23,7 @@ class Model{
 		aiw::ind(-1, 1, 1), aiw::ind( 1,-1, 1), aiw::ind( 1, 1,-1), aiw::ind( 1, 1, 1)
 	};
 
-	std::ofstream ftvals, fspectrum;
-
+	std::ofstream ftvals, fspectrum, fspectr_av;
 	aiw::FFTW<3, float> fftw;
 	std::vector<double> spectr_eq; int spectr_eq_count = 0; float spectr_f_max = 0;
 	std::string path;
@@ -55,8 +54,11 @@ public:
 	aiw::Vec<3> M2eq;	     ///< равновесные вторые моменты намагниченности по осям
 	double Mabs_eq = 0;      ///< равновесный модуль намагниченности (рекомендуется использовать вместо него Meq.abs())
 	double eta, eta_eq = 0;
-	float n_b;
-	
+	float n_b;               ///< среднее число соседей у атома
+	double lm_eq;            ///< средняя длина магнонов в равновесии
+	double nu_eq;            ///< средняя частота магнонов в равновесии
+	double nu2_eq;           ///< средний квадрат частоты магнонов в равновесии
+
 	void init(const char *path);
 	void calc(int Nsteps);
 	void finish();	

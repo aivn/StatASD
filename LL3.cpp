@@ -84,8 +84,8 @@ void Model::init(const char *path_){
 
 
 	fftw.init(Ind<3>(1<<data_rank), 3);
-	fspectrum.open(std::string(path)+"spectrum.dat"); fspectrum<<"#:t nu ampl\n";
-	fspectr_av.open(std::string(path)+"tspectr-av.dat"); fspectr_av<<"#:t lm nu nu2\n";
+	// fspectrum.open(std::string(path)+"spectrum.dat"); fspectrum<<"#:t nu ampl\n";
+	// fspectr_av.open(std::string(path)+"tspectr-av.dat"); fspectr_av<<"#:t lm nu nu2\n";
 
 	rt_init += omp_get_wtime()-t0;
 }
@@ -157,6 +157,10 @@ void Model::calc(int steps){
 	// float sghT = sqrt(2*dt*alpha*std::max(0., 2*T-T_sc)); // v1 2*sqrt(dt*alpha*T);
 	// float sghT = sqrt(2*dt*alpha*(patchT && !calc_eq? T_sc: T)); // v4,5 2*sqrt(dt*alpha*T);
 	float sghT = sqrt(2*dt*alpha*(patchT ? T_sc: T)); // v4,5 2*sqrt(dt*alpha*T);
+    /*double beta_mu, _T = 1/T;
+	{	double bH = nb_sz*J, _B = exp(-bH*(1e1/(2*M_PI)+2));
+		beta_mu = log((exp(-bH)-exp(bH)*_B)/(1-_B)); WMSG(beta_mu);
+		}*/
 #endif // MAGNONS
 	size_t data_sz = data[0].size();  eta_old = eta[0];  float Kx2 = 2*K;
 	for(int Nt=0; Nt<steps; Nt++){
@@ -172,6 +176,8 @@ void Model::calc(int steps){
 				// WOUT(i, k, Hex); 
 				Vecf<3> H = Hex + Hext + nK*m0*Kx2*nK; 
 				Vecf<3> dmdt = m0%(-gamma*H -alpha*m0%H);
+				// v0 (1+m*H/H.abs()), v2 (1+(m*H/H.abs())^2), v3 (1+2*(m*H/H.abs())^2), v4 (1+2(m*H/H.abs())^4)
+				// float mH = m0*H/H.abs(); Vecf<3> dmdt = m0%(-gamma*H -alpha*(1+2*mH*mH*mH*mH)*m0%H);  
 				m1 = m0 + .5f*dt*dmdt;
 				dm = .5f*dmdt;
 			}
@@ -187,6 +193,7 @@ void Model::calc(int steps){
 				Vecf<3> Hex = Hexch(1, i, nb, k);
 				Vecf<3> H = Hex + Hext + nK*m1*Kx2*nK; 
 				Vecf<3> dmdt = m1%(-gamma*H -alpha*m1%H);
+				// float mH = m1*H/H.abs();  Vecf<3> dmdt = m1%(-gamma*H -alpha*(1+2*mH*mH*mH*mH)*m1%H);
 				m2 = m0 + .5f*dt*dmdt;
 				dm += dmdt;
 			}
@@ -200,6 +207,7 @@ void Model::calc(int steps){
 				Vecf<3> Hex = Hexch(2, i, nb, k);
 				Vecf<3> H = Hex + Hext + nK*m2*Kx2*nK; 
 				Vecf<3> dmdt = m2%(-gamma*H -alpha*m2%H);
+				// float mH = m2*H/H.abs();  Vecf<3> dmdt = m2%(-gamma*H -alpha*(1+2*mH*mH*mH*mH)*m2%H);
 				m1 = m0 + dt*dmdt;
 				dm += dmdt;
 			}
@@ -224,12 +232,13 @@ void Model::calc(int steps){
 				Vecf<3> Hex = Hexch(1, i, nb, k);
 				Vecf<3> H = Hex + Hext + nK*m1*Kx2*nK; 
 				Vecf<3> dmdt = m1%(-gamma*H -alpha*m1%H);
+				// float mH = m1*H/H.abs();  Vecf<3> dmdt = m1%(-gamma*H -alpha*(1+2*mH*mH*mH*mH)*m1%H);
 				m0 += dt*_3*(dm + .5f*dmdt);
 				// m0 = gauss_rotate(m0/m0.abs(), sghT, seed); // old variant, errro
 				m0 /= m0.abs(); // data[2][i].m[k] = m0;
 
 				// Vecf<3> Hm = rotate(nm_perp, nm, sin(phi0+km*coord[k]+km*zoff2pos<3>(i, data_rank)));
-				
+				/**/				
 #ifndef MAGNONS
 				m0 = rotate(m0, randN01.V<3>(thID)*sghT);  // ??? поворот или приращение ???
 #else  // MAGNONS
@@ -237,8 +246,33 @@ void Model::calc(int steps){
 				// m0 = rotate(m0, mg(zoff2pos<3>(i, data_rank)+coord[k])*zeta+(1-zeta)*rand_gaussV<3, float>(seed)*sghT);
 				m0 = rotate(m0, mg(zoff2pos<3>(i, data_rank)+coord[k]));
 #endif // MAGNONS
+				/**/
 			}
 		}
+
+		/*
+#pragma omp parallel for if(threads!=1)
+		for(size_t i=0; i<data_sz; ++i){
+			// int thID = omp_get_thread_num();
+			ZCubeNb<3> nb = data[0].get_nb(i, 7);
+			for(int k=0; k<cell_sz; k++){
+				const Vecf<3> &m0 = data[0][i].m[k];
+				Vecf<3> Hex = Hexch(0, i, nb, k);
+				data[1][i].m[k] = Hex + Hext + nK*m0*Kx2*nK; 
+			}
+		}
+
+#pragma omp parallel for if(threads!=1)
+		for(size_t i=0; i<data_sz; ++i){
+			int thID = omp_get_thread_num();
+			for(int k=0; k<cell_sz; k++){
+				Vecf<3> &m0 = data[0][i].m[k], &H = data[1][i].m[k];
+				double bH = H.abs()/T, _B = exp(-bH*(1e1/(2*M_PI)+2));
+				double beta_mu = log((exp(-bH)-exp(bH)*_B)/(1-_B));
+				m0 = rotate(m0, randN01.V<3>(thID)*float(sghT*sqrt(1/(1/(exp(-(bH+beta_mu))-1)+1))));  
+			}
+		}
+		*/
 		//---------------
 		/*
 		unsigned int seed = 0;	
@@ -260,9 +294,11 @@ void Model::calc(int steps){
 		if(calc_eq || Nt==steps-1) calc_av();
 	}
 	if(calc_eq){
-		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		// fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]; });
 		std::vector<float> sp; spectr_f_max = 0; 
 		auto av = fftw.spectrum(sp, spectr_f_max, 7);
+		if(!gsnorm.size()) fftw.norm(gsnorm, spectr_f_max);
 		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
 		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] += sp[i];
 		lm_eq += av.l_av; nu_eq += av.nu_av; nu2_eq += av.nu2_av;
@@ -370,7 +406,8 @@ void Model::calc_quant(int steps){
 		if(calc_eq || Nt==steps-1) calc_av();
 	}
 	if(calc_eq){
-		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		// fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]; });
 		std::vector<float> sp; spectr_f_max = 0; 
 		auto av = fftw.spectrum(sp, spectr_f_max, 7);
 		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
@@ -604,15 +641,18 @@ void Model::finish(){
 		nu_eq /= spectr_eq_count;
 		nu2_eq /= spectr_eq_count;
 	}else{
-		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		// fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]; });
 		std::vector<float> sp; spectr_f_max = 0; 
 		auto av = fftw.spectrum(sp, spectr_f_max, 7);
+		if(!gsnorm.size()) fftw.norm(gsnorm, spectr_f_max);
 		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
 		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] = sp[i];	
 		lm_eq = av.l_av; nu_eq = av.nu_av; nu2_eq = av.nu2_av;
 	}
-	std::ofstream fout(path+"spectr-eq.dat");  fout<<"#:nu ampl\n";
-	for(int i=0, ssz=spectr_eq.size(); i<ssz; i++) fout<<(i+.5)*spectr_f_max/ssz<<' '<<spectr_eq[i]<<'\n';	
+
+	std::ofstream fout(path+"spectr-eq.dat");  fout<<"#:nu ampl g\n";
+	for(int i=0, ssz=spectr_eq.size(); i<ssz; i++) fout<<(i+.5)*spectr_f_max/ssz<<' '<<spectr_eq[i]<<' '<<gsnorm[i]<<'\n';	
 }
 //------------------------------------------------------------------------------
 void Model::dump_fz(const char *path, bool eq) const {
@@ -683,17 +723,21 @@ void Model::check_rand(int steps, const char *path){  ///< создает фай
 	}
 }
 //------------------------------------------------------------------------------
-void Model::calc_spectrum(const char *path){
-	fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+void Model::calc_spectrum(const char *path_){
+	// fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]-M[c]; });
+	fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos].m[0][c]; });
 	std::vector<float> sp; float f_max = 0; 
 	auto av = fftw.spectrum(sp, f_max, 7);
+	if(!fspectr_av.is_open()){ fspectr_av.open(path+"tspectr-av.dat"); fspectr_av<<"#:t lm nu nu2\n"; }
 	fspectr_av<<t<<' '<<av.l_av<<' '<<av.nu_av<<' '<<av.nu2_av<<std::endl;
 	// WMSG(av.l_av, av.nu_av, av.max_nu, av.max_ampl/(1<<data_rank*3));
-	if(path){
-		std::ofstream fout(path);  fout<<"#:nu ampl\n";
-		for(int i=0, sz=sp.size(); i<sz; i++) fout<<(i+.5)*f_max/sz<<' '<<sp[i]<<'\n';
+	if(!gsnorm.size()) fftw.norm(gsnorm, f_max);
+	if(path_){
+		std::ofstream fout(path_);  fout<<"#:nu ampl g\n";
+		for(int i=0, sz=sp.size(); i<sz; i++) fout<<(i+.5)*f_max/sz<<' '<<sp[i]<<' '<<gsnorm[i]<<'\n';
 	} else {		
-		for(int i=0, sz=sp.size(); i<sz; i++) fspectrum<<t<<' '<<(i+.5)*f_max/sz<<' '<<sp[i]<<'\n';
+		if(!fspectrum.is_open()){ fspectrum.open(path+"spectrum.dat"); fspectrum<<"#:t nu ampl g\n"; }
+		for(int i=0, sz=sp.size(); i<sz; i++) fspectrum<<t<<' '<<(i+.5)*f_max/sz<<' '<<sp[i]<<' '<<gsnorm[i]<<'\n';
 		fspectrum<<std::endl;
 	}
 }

@@ -26,6 +26,8 @@ void Model::init(const char *path){
 	// exit(0);
 	fftw.init(mesh_sz, 3);
 	fspectrum.open(std::string(path)+"spectrum.dat"); fspectrum<<"#:t nu ampl\n";
+	fspectr_av.open(std::string(path)+"tspectr-av.dat"); fspectr_av<<"#:t lm nu nu2\n";
+	spectr_eq_count = 0;  spectr_f_max = lm_eq = nu_eq = nu2_eq = 0;
 }
 //------------------------------------------------------------------------------
 const float _3 = 1./3;
@@ -102,9 +104,10 @@ void Model::calc(int steps){
 	if(calc_eq){
 		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos[0]+(pos[1]+pos[2]*mesh_sz[1])*mesh_sz[0]][c]-M[c]; });
 		std::vector<float> sp; 
-		fftw.spectrum(sp, spectr_f_max, 7);
+		auto av = fftw.spectrum(sp, spectr_f_max, 7);
 		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
 		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] += sp[i];
+		lm_eq += av.l_av; nu_eq += av.nu_av; nu2_eq += av.nu2_av;
 		spectr_eq_count++;
 	}
 }
@@ -123,11 +126,16 @@ void Model::finish(){
 		Mabs_eq = M.abs();
 		eta_eq = eta;
 	}
-	if(spectr_eq_count) for(auto& s: spectr_eq) s /= spectr_eq_count;
-	else{
+	if(spectr_eq_count){
+		for(auto& s: spectr_eq) s /= spectr_eq_count;
+		lm_eq /= spectr_eq_count;
+		nu_eq /= spectr_eq_count;
+		nu2_eq /= spectr_eq_count;
+	}else{
 		fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos[0]+(pos[1]+pos[2]*mesh_sz[1])*mesh_sz[0]][c]-M[c]; });
 		std::vector<float> sp; spectr_f_max = 0; 
-		fftw.spectrum(sp, spectr_f_max, 7);
+		auto av = fftw.spectrum(sp, spectr_f_max, 7);
+		lm_eq = av.l_av; nu_eq = av.nu_av; nu2_eq = av.nu2_av;
 		if(!spectr_eq.size()) spectr_eq.resize(sp.size(), 0.);
 		for(int i=0, ssz=sp.size(); i<ssz; i++) spectr_eq[i] = sp[i];	
 	}
@@ -138,7 +146,8 @@ void Model::finish(){
 void Model::calc_spectrum(const char *path){
 	fftw.fwd([&](const Ind<3> &pos, int c){ return data[0][pos[0]+(pos[1]+pos[2]*mesh_sz[1])*mesh_sz[0]][c]-M[c]; });
 	std::vector<float> sp; float f_max = 0; 
-	fftw.spectrum(sp, f_max, 7);
+	auto av = fftw.spectrum(sp, f_max, 7);
+	fspectr_av<<t<<' '<<av.l_av<<' '<<av.nu_av<<' '<<av.nu2_av<<std::endl;
 	if(path){
 		std::ofstream fout(path);  fout<<"#:nu ampl\n";
 		for(int i=0, sz=sp.size(); i<sz; i++) fout<<(i+.5)*f_max/sz<<' '<<sp[i]<<'\n';
