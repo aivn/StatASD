@@ -56,7 +56,8 @@ void Model::init(const char *path_){
 	if(fz_sz){ fz.resize(fz_sz); fz_eq.resize(fz_sz, 0.f); fz_buf.resize(Nth*fz_sz); }
 	if(f_eta_sz){ f_eta.resize(f_eta_sz); f_eta_eq.resize(f_eta_sz, 0.f); f_eta_buf.resize(Nth*f_eta_sz); }
 
-	t = 0.;   T_sc = T; Tsc_eq = 0;
+	// t = 0.;
+	T_sc = T; Tsc_eq = 0;
 
 	if(Ms_start>=0 && Ms_start<data_rank){
 		Ms_arr.resize(data_rank-1);
@@ -105,8 +106,8 @@ void Model::start_gauss(){
 		for(size_t i=0; i<data[0].size(); i++) for(int k=0; k<cell_sz; k++) data[0][i].m[k] = sph_vert(ftable.lower_bound(rnd(gen))->second, 5);
 	}
 	rt_init += omp_get_wtime()-t0;
-	init_conditions = true;  // флаг задания н.у.
 	open_tvals();
+	init_conditions = true;  // флаг задания н.у.
 }
 void Model::start_helic(){
 	double t0 = omp_get_wtime();
@@ -119,23 +120,24 @@ void Model::start_helic(){
 		for(int k=0; k<cell_sz; k++) data[0][i].m[k] = rotate(m0, n, 2*M_PI*(z+coord[k][2])*helic_n/data[0].bbox()[2]);
 	}
 	rt_init += omp_get_wtime()-t0;
-	init_conditions = true;  // флаг задания н.у.
 	open_tvals();
+	init_conditions = true;  // флаг задания н.у.
 }
 //------------------------------------------------------------------------------
 void Model::open_tvals(){
-	t = 0;
 	if(out_tm0){
-		ftm.close(); ftm = File("%tm0.dat", "w", path);
+		ftm.close(); ftm = File("%tm0.dat", "a", path);
 		ftm("#:t mx my mz Hx Hy Hz\n% % %\n", t, data[0][ind(0,0,0)].m[0], Hexch(0, 0, data[0].get_nb(0, 7), 0));
 	}
-	ftvals.close(); ftvals = File("%tvals.dat", "w", path);
-	ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz"
-		   "  eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc Hz T\n");
+	ftvals.close(); ftvals = File("%tvals.dat", "a", path);
+	if(!init_conditions) ftvals("#:t M Mx My Mz M2x M2y M2z W Wexch Wext Wanis Q1 Q2 Q3 Q4 eta eta2 eta3 eta4 PHIx PHIy PHIz THETAx THETAy THETAz  XIxx XIyy XIzz XIxy XIxz XIyz"
+								"  eta_k2 eta2_k2 eta3_k2 eta4_k2  eta_k3 eta2_k3 eta3_k3 eta4_k3   eta_k4 eta2_k4 eta3_k4 eta4_k4  Psi U_CMD UM_LL zeta  dot_eta T_sc Hz T\n");
 	if(corr_max){
-		corr_fout.close(); corr_fout = File("%corr.dat", "w", path);
-		corr_fout.printf("#:t  eta1 eta1_2 eta1_3 eta1_4"); for(int i=0; i<corr_max; i++) corr_fout("    eta% eta%_2 eta%_3 eta%_4", i+2, i+2, i+2, i+2);
-		corr_fout.printf("\n");
+		corr_fout.close(); corr_fout = File("%corr.dat", "a", path);
+		if(!init_conditions){
+			corr_fout.printf("#:t  eta1 eta1_2 eta1_3 eta1_4"); for(int i=0; i<corr_max; i++) corr_fout("    eta% eta%_2 eta%_3 eta%_4", i+2, i+2, i+2, i+2);
+			corr_fout.printf("\n");
+		}
 	}
 	calc_av();	drop_tvals();
 }
@@ -682,7 +684,7 @@ bool Model::load_data(const char *path){
 	Natoms = data[0].size()*cell_sz;
 	if(fin.read(&(data[0][0]), data[0].size()*sizeof(Cell))!=data[0].size()*sizeof(Cell)){ WMSG("file too short"); return false; }
 	rt_init += omp_get_wtime()-t0;
-	open_tvals(); init_conditions = true;  // флаг задания н.у.
+	init_conditions = true; open_tvals();   // флаг задания н.у.
 	return true;
 }
 //------------------------------------------------------------------------------

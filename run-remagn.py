@@ -1,7 +1,7 @@
 #!/usr/bin/python2
 # -*- coding: utf-8 -*-
 
-import os, math, shutil
+import os, math
 from LL3 import *
 from aiwlib.vec import *
 from aiwlib.iostream import *
