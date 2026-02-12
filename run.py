@@ -25,9 +25,8 @@ model.M0[2] = calc.M0z
 model.init(calc.path)
 
 if os.path.exists(calc.path+'spins'):
+    model._core.t = float(open(calc.path+'tvals.dat').readlines()[-1].split()[0])
     if not model.load_data(calc.path+'spins'): print 'LOAD SPINS FAILED'; exit()
-    model._core.t = calc.t
-    #print model.t, calc.t; exit()
 else:    
     model.Hext[2] = calc.Hz
 
